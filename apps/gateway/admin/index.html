@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>智能客服 · 运营后台</title>
+  <style>
+    :root { font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #1a1a1a; }
+    body { margin: 0; background: #f3f0ea; }
+    main { max-width: 880px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-weight: 650; letter-spacing: -0.02em; }
+    section { background: #fff; border: 1px solid #ddd5c8; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+    label { display: block; font-size: 0.85rem; margin-top: 0.5rem; }
+    input, textarea, button { font: inherit; }
+    input, textarea { width: 100%; box-sizing: border-box; padding: 0.45rem 0.55rem; border: 1px solid #ccc; }
+    button { margin-top: 0.75rem; padding: 0.45rem 0.9rem; background: #1f4b3f; color: #fff; border: 0; cursor: pointer; }
+    button.secondary { background: #5c5c5c; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.4rem; border-bottom: 1px solid #eee; }
+    .err { color: #a33; }
+    .ok { color: #1f4b3f; }
+    .hint { font-size: 0.85rem; color: #666; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    #app[data-authed="0"] .authed { display: none; }
+    #app[data-authed="1"] .guest { display: none; }
+  </style>
+</head>
+<body>
+  <main id="app" data-authed="0">
+    <h1>智能客服 · 运营后台</h1>
+        <p class="hint">用于开通商户、充值点数、配置智能回复模型。店铺／政策／商品卖点请商户在桌面客户端「设置 → 店铺知识」维护。<br />沟通口径：100 点 ≈ ¥1；按约 3 点／次估算，¥100 ≈ 约 3,000 次智能回复（约值，视对话长短与知识注入浮动，以实际扣点为准）。</p>
+
+    <section class="guest">
+      <h2>登录</h2>
+      <label>账号 <input id="loginUser" value="admin" autocomplete="username" /></label>
+      <label>密码 <input id="loginPass" type="password" value="" autocomplete="current-password" /></label>
+      <button id="btnLogin">登录</button>
+      <p id="loginMsg" class="err"></p>
+    </section>
+
+    <div class="authed">
+      <section>
+        <button class="secondary" id="btnLogout">退出登录</button>
+        <span id="who"></span>
+      </section>
+
+      <section>
+        <h2>开通商户</h2>
+        <p class="hint">开通后，商户可用「商户管理员账号」登录桌面客户端（设置 → 网关账户）。</p>
+        <div class="row">
+          <label>公司／商户名称 <input id="tName" placeholder="例如：某某贸易" /></label>
+          <label>点数折扣（1＝原价，0.8＝八折） <input id="tDiscount" value="1" /></label>
+        </div>
+        <div class="row">
+          <label>商户管理员账号 <input id="tAdminUser" /></label>
+          <label>商户管理员密码 <input id="tAdminPass" type="password" /></label>
+        </div>
+        <button id="btnCreateTenant">开通</button>
+        <p id="tenantMsg"></p>
+      </section>
+
+      <section>
+        <h2>商户列表 · 充值 · 停用</h2>
+        <p class="hint">充值时可用口径：¥100 = 10,000 点 ≈ 约 3,000 次（约值，视对话长短与知识注入浮动，以实际扣点为准）。</p>
+        <button id="btnRefreshTenants">刷新列表</button>
+        <div id="tenantList"></div>
+      </section>
+
+      <section>
+        <h2>对外扣点规则</h2>
+        <p class="hint">
+          这里管的是<strong>向商户收多少点</strong>，不是 DeepSeek 官方成本。<br />
+          当前默认：1 元人民币 = 100 点；智能回复按「读入／写出」用量扣点（约 10 倍于 Flash 未命中成本）。改完后对新回复立即生效；大客户请用商户列表里的「改折扣」，不必改这里。
+        </p>
+        <button id="btnRefreshPrices" type="button">刷新规则</button>
+        <div id="priceList"></div>
+      </section>
+
+      <section>
+        <h2>平台硬规则（PlatformHardRules）</h2>
+        <p class="hint">全平台一份，强制注入智能回复；商户「补充规则」只能叠加，不能削弱。与上方模型配置分开。</p>
+        <label>硬规则正文
+          <textarea id="hardRules" rows="14" placeholder="禁编造商品、禁说转人工等全平台底线…"></textarea>
+        </label>
+        <button id="btnSaveHardRules">保存硬规则</button>
+        <button class="secondary" id="btnLoadHardRules" type="button">重新加载</button>
+        <p id="hardRulesMsg"></p>
+      </section>
+
+      <section>
+        <h2>智能回复模型</h2>
+        <p class="hint">只配置上游接口与密钥。客服行为规则请改上方「平台硬规则」；商户口吻在桌面端「网关账户」维护。</p>
+        <label>显示名称 <input id="mName" value="deepseek" placeholder="方便自己辨认，例如：deepseek" /></label>
+        <label>接口地址 <input id="mBase" value="https://api.deepseek.com/v1" placeholder="服务商提供的接口地址" /></label>
+        <label>接口密钥 <input id="mKey" type="password" placeholder="填入服务商提供的密钥" /></label>
+        <label>模型名称 <input id="mModel" value="deepseek-v4-flash" placeholder="例如 deepseek-v4-flash" /></label>
+        <button id="btnSaveSku">保存并启用</button>
+        <button class="secondary" id="btnLoadSku" type="button">加载现有配置</button>
+        <p id="skuMsg"></p>
+        <p id="skuHint" class="hint"></p>
+      </section>
+
+      <section>
+        <h2>最近用量与毛利</h2>
+        <p class="hint">上游成本按 DeepSeek 官方价目（hit／miss／output）估算；对外扣点仍按价目表。毛利 = 扣点折合人民币 − 上游成本。</p>
+        <button id="btnUsage">刷新</button>
+        <p id="usageSummary" class="hint"></p>
+        <div id="usageList"></div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const statusLabel = (s) =>
+      s === 'active' ? '正常' : s === 'suspended' ? '已停用' : (s || '-');
+
+    /** 与 gateway/src/htmlEscape.ts 保持一致 */
+    const escapeHtml = (input) =>
+      String(input)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const api = (path, opts = {}) => {
+      const token = localStorage.getItem('cs_token');
+      return fetch(path, {
+        ...opts,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: 'Bearer ' + token } : {}),
+          ...(opts.headers || {}),
+        },
+      }).then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.message || r.statusText || '请求失败');
+        return j;
+      });
+    };
+
+    const app = document.getElementById('app');
+    const setAuthed = (v) => (app.dataset.authed = v ? '1' : '0');
+
+    document.getElementById('btnLogin').onclick = async () => {
+      try {
+        const j = await api('/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: loginUser.value,
+            password: loginPass.value,
+          }),
+        });
+        localStorage.setItem('cs_token', j.data.token);
+        who.textContent = '当前账号：' + j.data.user.username;
+        setAuthed(true);
+        loginMsg.textContent = '';
+        refreshTenants();
+        refreshPrices().catch(() => undefined);
+        loadSku().catch(() => undefined);
+        loadHardRules().catch(() => undefined);
+      } catch (e) {
+        loginMsg.textContent = e.message;
+      }
+    };
+
+    document.getElementById('btnLogout').onclick = () => {
+      localStorage.removeItem('cs_token');
+      setAuthed(false);
+    };
+
+    document.getElementById('btnCreateTenant').onclick = async () => {
+      try {
+        const adminUser = tAdminUser.value.trim();
+        const adminPass = tAdminPass.value;
+        const j = await api('/admin/tenants', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: tName.value,
+            adminUsername: adminUser,
+            adminPassword: adminPass,
+            discountRate: Number(tDiscount.value || 1),
+          }),
+        });
+        tenantMsg.className = 'ok';
+        tenantMsg.textContent =
+          '已开通。商户账号：' +
+          (j.data.adminUsername || adminUser) +
+          ' ／ 密码：' +
+          adminPass +
+          '（请自行抄给商户；密码不会再次显示）';
+        tAdminPass.value = '';
+        refreshTenants();
+      } catch (e) {
+        tenantMsg.className = 'err';
+        tenantMsg.textContent = e.message;
+      }
+    };
+
+    async function refreshTenants() {
+      const j = await api('/admin/tenants');
+      tenantList.innerHTML =
+        '<table><tr><th>商户名称</th><th>商户账号</th><th>状态</th><th>折扣</th><th>可用点数</th><th>操作</th></tr>' +
+        j.data
+          .map(
+            (t) => `<tr>
+          <td>${escapeHtml(t.name)}</td>
+          <td>${escapeHtml(t.admin_username || '（未设置）')}</td>
+          <td>${statusLabel(t.status)}</td>
+          <td>${escapeHtml(String(t.discount_rate ?? 1))}</td>
+          <td>${escapeHtml(String(t.balance ?? 0))}</td>
+          <td>
+            <button data-recharge="${escapeHtml(t.id)}">充值</button>
+            <button data-adjust="${escapeHtml(t.id)}">调账</button>
+            <button data-discount="${escapeHtml(t.id)}" data-rate="${escapeHtml(String(t.discount_rate ?? 1))}">改折扣</button>
+            <button data-reset-pass="${escapeHtml(t.id)}" data-user="${escapeHtml(t.admin_username || '')}">重置密码</button>
+            ${
+              t.status === 'active'
+                ? `<button data-suspend="${escapeHtml(t.id)}">停用</button>`
+                : `<button data-activate="${escapeHtml(t.id)}">启用</button>`
+            }
+            <button data-delete="${escapeHtml(t.id)}" data-name="${escapeHtml(t.name)}">删除</button>
+          </td>
+        </tr>`,
+          )
+          .join('') +
+        '</table>';
+      tenantList.querySelectorAll('[data-recharge]').forEach((btn) => {
+        btn.onclick = async () => {
+          const amount = prompt(
+            '充值多少点数？\n（参考：10000 点 = ¥100 ≈ 约 3000 次；约值，以实际扣点为准）',
+            '10000',
+          );
+          if (!amount) return;
+          await api('/admin/tenants/' + btn.dataset.recharge + '/recharge', {
+            method: 'POST',
+            body: JSON.stringify({ amountCredit: Number(amount) }),
+          });
+          refreshTenants();
+        };
+      });
+      tenantList.querySelectorAll('[data-adjust]').forEach((btn) => {
+        btn.onclick = async () => {
+          const amount = prompt('调账点数（正数增加，负数扣减）', '100');
+          if (!amount) return;
+          const note = prompt('调账备注（必填）', '补偿调账');
+          if (!note) return;
+          await api('/admin/tenants/' + btn.dataset.adjust + '/adjust', {
+            method: 'POST',
+            body: JSON.stringify({
+              amountCredit: Number(amount),
+              note,
+            }),
+          });
+          refreshTenants();
+        };
+      });
+      tenantList.querySelectorAll('[data-discount]').forEach((btn) => {
+        btn.onclick = async () => {
+          const rate = prompt(
+            '点数折扣（1＝原价，0.8＝八折）',
+            btn.dataset.rate || '1',
+          );
+          if (!rate) return;
+          await api('/admin/tenants/' + btn.dataset.discount + '/discount', {
+            method: 'POST',
+            body: JSON.stringify({ discountRate: Number(rate) }),
+          });
+          refreshTenants();
+        };
+      });
+      tenantList.querySelectorAll('[data-reset-pass]').forEach((btn) => {
+        btn.onclick = async () => {
+          const user = btn.dataset.user || '商户管理员';
+          const password = prompt('为「' + user + '」设置新密码（至少 6 位）');
+          if (!password) return;
+          if (password.length < 6) {
+            alert('新密码至少 6 位');
+            return;
+          }
+          await api(
+            '/admin/tenants/' + btn.dataset.resetPass + '/reset-admin-password',
+            {
+              method: 'POST',
+              body: JSON.stringify({ password }),
+            },
+          );
+          alert(
+            '已重置。商户账号：' +
+              user +
+              ' ／ 新密码：' +
+              password +
+              '\n请抄给商户；密码不会保存在列表中。',
+          );
+        };
+      });
+      tenantList.querySelectorAll('[data-suspend]').forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm('停用后该商户将无法使用智能回复，确定吗？')) return;
+          await api('/admin/tenants/' + btn.dataset.suspend + '/suspend', {
+            method: 'POST',
+          });
+          refreshTenants();
+        };
+      });
+      tenantList.querySelectorAll('[data-activate]').forEach((btn) => {
+        btn.onclick = async () => {
+          await api('/admin/tenants/' + btn.dataset.activate + '/activate', {
+            method: 'POST',
+          });
+          refreshTenants();
+        };
+      });
+      tenantList.querySelectorAll('[data-delete]').forEach((btn) => {
+        btn.onclick = async () => {
+          const name = btn.dataset.name || '';
+          const typed = prompt(
+            '删除不可恢复。请输入商户名称「' + name + '」以确认：',
+          );
+          if (typed !== name) {
+            alert('名称不一致，已取消');
+            return;
+          }
+          await api('/admin/tenants/' + btn.dataset.delete, {
+            method: 'DELETE',
+            body: JSON.stringify({ confirmName: typed }),
+          });
+          refreshTenants();
+        };
+      });
+    }
+
+    const PRICE_LABELS = {
+      cny_to_credit: {
+        title: '人民币兑点数',
+        meaning: '商户付 1 元人民币，入账多少点（默认 100，即 1 元 = 100 点）',
+        unit: '点／元',
+        prompt: '商户付 1 元人民币，入账多少点？\n（默认 100，即 1 元 = 100 点）',
+      },
+      credit_per_1k_prompt_tokens: {
+        title: '读入用量扣点',
+        meaning: '模型每读入约 1000 字词单位，向商户扣多少点（默认 1）',
+        unit: '点／千单位',
+        prompt: '模型每读入约 1000 字词单位，扣多少点？\n（默认 1；数值越大商户越贵）',
+      },
+      credit_per_1k_completion_tokens: {
+        title: '写出用量扣点',
+        meaning: '模型每写出约 1000 字词单位，向商户扣多少点（默认 2，通常比读入贵）',
+        unit: '点／千单位',
+        prompt: '模型每写出约 1000 字词单位，扣多少点？\n（默认 2；通常比读入贵）',
+      },
+    };
+
+    async function refreshPrices() {
+      const j = await api('/admin/price-book');
+      const rows = (j.data || []).slice().sort((a, b) => {
+        const order = [
+          'cny_to_credit',
+          'credit_per_1k_prompt_tokens',
+          'credit_per_1k_completion_tokens',
+        ];
+        return order.indexOf(a.key) - order.indexOf(b.key);
+      });
+      priceList.innerHTML =
+        '<table><tr><th>规则</th><th>当前值</th><th>怎么理解</th><th></th></tr>' +
+        rows
+          .map((p) => {
+            const meta = PRICE_LABELS[p.key] || {
+              title: p.key,
+              meaning: p.note || '自定义规则',
+              unit: '',
+              prompt: '请输入新数值',
+            };
+            const valText =
+              escapeHtml(String(p.value)) +
+              (meta.unit ? ' <span class="hint">' + escapeHtml(meta.unit) + '</span>' : '');
+            return `<tr>
+          <td><strong>${escapeHtml(meta.title)}</strong></td>
+          <td>${valText}</td>
+          <td>${escapeHtml(meta.meaning)}</td>
+          <td><button data-price-key="${escapeHtml(p.key)}" data-price-val="${escapeHtml(String(p.value))}">修改</button></td>
+        </tr>`;
+          })
+          .join('') +
+        '</table>';
+      priceList.querySelectorAll('[data-price-key]').forEach((btn) => {
+        btn.onclick = async () => {
+          const meta = PRICE_LABELS[btn.dataset.priceKey] || {
+            prompt: '请输入新数值',
+          };
+          const value = prompt(meta.prompt, btn.dataset.priceVal || '1');
+          if (!value) return;
+          await api('/admin/price-book/' + encodeURIComponent(btn.dataset.priceKey), {
+            method: 'PUT',
+            body: JSON.stringify({ value: Number(value) }),
+          });
+          refreshPrices();
+        };
+      });
+    }
+
+    document.getElementById('btnRefreshTenants').onclick = () =>
+      refreshTenants().catch(alert);
+    document.getElementById('btnRefreshPrices').onclick = () =>
+      refreshPrices().catch(alert);
+
+    async function loadHardRules() {
+      const j = await api('/admin/hard-rules');
+      hardRules.value = j.data?.content || '';
+    }
+
+    async function loadSku() {
+      const j = await api('/admin/model-skus');
+      const active = (j.data || []).find((s) => s.active) || j.data?.[0];
+      if (!active) {
+        skuHint.textContent = '尚未配置智能回复模型，请先填写并保存。';
+        return;
+      }
+      mName.value = active.name || '';
+      mBase.value = active.baseUrl || '';
+      mModel.value = active.model || '';
+      mKey.value = '';
+      mKey.placeholder = active.hasApiKey
+        ? '已配置 ' + (active.apiKeyMasked || '****') + '（留空＝不修改）'
+        : '填入接口密钥';
+      skuHint.textContent =
+        '当前启用：' +
+        active.name +
+        ' ／ ' +
+        active.model +
+        (active.hasApiKey ? '（密钥 ' + active.apiKeyMasked + '）' : '');
+    }
+
+    document.getElementById('btnLoadHardRules').onclick = () =>
+      loadHardRules()
+        .then(() => {
+          hardRulesMsg.className = 'ok';
+          hardRulesMsg.textContent = '已加载';
+        })
+        .catch((e) => {
+          hardRulesMsg.className = 'err';
+          hardRulesMsg.textContent = e.message;
+        });
+
+    document.getElementById('btnSaveHardRules').onclick = async () => {
+      try {
+        await api('/admin/hard-rules', {
+          method: 'PUT',
+          body: JSON.stringify({ content: hardRules.value }),
+        });
+        hardRulesMsg.className = 'ok';
+        hardRulesMsg.textContent = '硬规则已保存';
+        await loadHardRules();
+      } catch (e) {
+        hardRulesMsg.className = 'err';
+        hardRulesMsg.textContent = e.message;
+      }
+    };
+
+    document.getElementById('btnLoadSku').onclick = () =>
+      loadSku()
+        .then(() => {
+          skuMsg.className = 'ok';
+          skuMsg.textContent = '已加载';
+        })
+        .catch((e) => {
+          skuMsg.className = 'err';
+          skuMsg.textContent = e.message;
+        });
+
+    document.getElementById('btnSaveSku').onclick = async () => {
+      try {
+        await api('/admin/model-skus', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: mName.value,
+            baseUrl: mBase.value,
+            apiKey: mKey.value,
+            model: mModel.value,
+            platformPrompt: '',
+          }),
+        });
+        skuMsg.className = 'ok';
+        skuMsg.textContent = '已保存并启用';
+        mKey.value = '';
+        await loadSku();
+      } catch (e) {
+        skuMsg.className = 'err';
+        skuMsg.textContent = e.message;
+      }
+    };
+
+    document.getElementById('btnUsage').onclick = async () => {
+      const j = await api('/admin/usage');
+      const s = j.summary || {};
+      const rate =
+        s.marginRate == null ? '-' : (Number(s.marginRate) * 100).toFixed(1) + '%';
+      usageSummary.textContent =
+        '近 ' +
+        (s.rows ?? 0) +
+        ' 条：扣点 ' +
+        (s.creditCharged ?? '-') +
+        ' ／ 营收约 ¥' +
+        (s.revenueCny ?? '-') +
+        ' ／ 上游成本约 ¥' +
+        (s.costUpstreamCny ?? '-') +
+        ' ／ 毛利约 ¥' +
+        (s.marginCny ?? '-') +
+        '（' +
+        rate +
+        '）';
+      usageList.innerHTML =
+        '<table><tr><th>时间</th><th>模型</th><th>扣点数</th><th>上游成本¥</th><th>是否成功</th></tr>' +
+        j.data
+          .map(
+            (u) => `<tr>
+          <td>${escapeHtml(u.created_at || '')}</td><td>${escapeHtml(u.model || '')}</td>
+          <td>${escapeHtml(String(u.credit_charged ?? ''))}</td>
+          <td>${escapeHtml(u.cost_upstream != null ? String(u.cost_upstream) : '-')}</td>
+          <td>${u.success ? '成功' : '失败'}</td>
+        </tr>`,
+          )
+          .join('') +
+        '</table>';
+    };
+
+    if (localStorage.getItem('cs_token')) {
+      setAuthed(true);
+      api('/me')
+        .then((j) => {
+          who.textContent = '当前账号：' + j.data.user.username;
+          refreshTenants();
+          refreshPrices().catch(() => undefined);
+          loadSku().catch(() => undefined);
+          loadHardRules().catch(() => undefined);
+        })
+        .catch(() => setAuthed(false));
+    }
+  </script>
+</body>
+</html>

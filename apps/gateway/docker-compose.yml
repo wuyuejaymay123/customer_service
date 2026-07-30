@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cs-billing-postgres
+    environment:
+      POSTGRES_USER: cs
+      POSTGRES_PASSWORD: cs_dev_password
+      POSTGRES_DB: cs_billing
+    ports:
+      - "5432:5432"
+    volumes:
+      - cs_pg_data:/var/lib/postgresql/data
+      - ./src/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./src/schema-shops.sql:/docker-entrypoint-initdb.d/02-schema-shops.sql:ro
+      - ./src/schema-prompt-layers.sql:/docker-entrypoint-initdb.d/03-schema-prompt-layers.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cs -d cs_billing"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  cs_pg_data:

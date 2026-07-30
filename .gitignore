@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.env
+**/.env
+!.env.example
+!**/.env.example
+*.log
+.DS_Store
+tmp-asar/
+tmp-tsc.txt
+
+# Desktop build / deps
+apps/desktop/node_modules/
+apps/desktop/release/
+apps/desktop/.erb/dll/
+apps/desktop/dist/
+apps/desktop/.env
+
+# Strategy backend binaries (too large for git; deliver separately)
+apps/desktop/backend/
+apps/desktop/assets/backend/
+
+# Gateway
+apps/gateway/node_modules/
+apps/gateway/.env
