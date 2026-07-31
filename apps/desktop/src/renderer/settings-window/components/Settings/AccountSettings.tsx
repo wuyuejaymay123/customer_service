@@ -350,13 +350,8 @@ const AccountSettings = () => {
 
         {!checking && !isLoggedIn && (
           <>
-            <Input
-              placeholder="网关地址"
-              value={gatewayUrl}
-              onChange={(e) => setGatewayUrl(e.target.value)}
-            />
             <Text fontSize="xs" color="gray.500">
-              请向运营方索取网关地址与账号。
+              请使用运营方提供的商户账号登录（网关已内置，无需填写地址）。
             </Text>
             <Input
               placeholder="账号"
@@ -373,7 +368,7 @@ const AccountSettings = () => {
             />
             <HStack>
               <Button colorScheme="teal" onClick={handleLogin}>
-                登录网关
+                登录
               </Button>
             </HStack>
           </>
