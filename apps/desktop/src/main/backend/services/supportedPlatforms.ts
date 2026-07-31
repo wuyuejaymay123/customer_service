@@ -1,18 +1,9 @@
 import { Platform } from '../types';
 
 /**
- * SupportedChannel：仅 千牛 + 拼多多。
+ * SupportedChannel：本版仅拼多多。
  */
 export const LOCAL_PLATFORMS: Platform[] = [
-  {
-    id: 'win_qianniu',
-    name: '千牛',
-    type: 'E_COMMERCE',
-    env: 'DESKTOP',
-    desc:
-      '淘宝／天猫千牛。多店请在千牛登录选“多店铺模式”，开启讲述人+气泡模式，并关闭千牛自带自动回复；本客户端建 1 个实例即可覆盖客户端内多店。',
-    avatar: 'https://qianniu.1688.com/favicon.ico',
-  },
   {
     id: 'pinduoduo',
     name: '拼多多',

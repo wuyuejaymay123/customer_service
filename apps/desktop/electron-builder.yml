@@ -27,6 +27,11 @@ directories:
   app: release/app
   buildResources: assets
   output: release/build
+# 不含千牛 Strategy backend（体积大）；本版仅拼多多
 extraResources:
-  - "./assets/**"
+  - from: assets
+    to: assets
+    filter:
+      - "**/*"
+      - "!backend/**"
 afterPack: "./removeLocales.js"

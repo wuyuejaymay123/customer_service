@@ -22,6 +22,7 @@ import {
   Tr,
   VStack,
 } from '@chakra-ui/react';
+import { DEFAULT_GATEWAY_URL } from '../../../../common/gatewayDefaults';
 
 type MeData = {
   user?: { role?: string; username?: string };
@@ -41,7 +42,7 @@ const roleLabel = (r?: string) =>
       : r || '-';
 
 const AccountSettings = () => {
-  const [gatewayUrl, setGatewayUrl] = useState('http://127.0.0.1:8787');
+  const [gatewayUrl, setGatewayUrl] = useState(DEFAULT_GATEWAY_URL);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState('');
@@ -120,7 +121,7 @@ const AccountSettings = () => {
           'gateway:get-auth',
         );
         if (!cancelled && auth) {
-          setGatewayUrl(auth.gatewayUrl || 'http://127.0.0.1:8787');
+          setGatewayUrl(DEFAULT_GATEWAY_URL);
           setUsername(auth.username || '');
           setSavedUsername(auth.username || '');
         }
@@ -142,8 +143,9 @@ const AccountSettings = () => {
     try {
       const result = await window.electron?.ipcRenderer?.invoke(
         'gateway:login',
-        { gatewayUrl, username, password },
+        { gatewayUrl: DEFAULT_GATEWAY_URL, username, password },
       );
+      setGatewayUrl(DEFAULT_GATEWAY_URL);
       if (result?.ok) {
         setMe(result.me);
         setSavedUsername(username.trim());
