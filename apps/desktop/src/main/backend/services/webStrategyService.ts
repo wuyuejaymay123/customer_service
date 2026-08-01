@@ -105,41 +105,43 @@ export class WebStrategyService {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
-        if (this.status === StrategyServiceStatusEnum.RUNNING) {
-          this.metaTick += 1;
-          const snapshot = [...this.strategies];
-          for (const strategy of snapshot) {
-            if (
-              this.removingIds.has(strategy.instance_id) ||
-              !this.strategies.includes(strategy)
-            ) {
-              // eslint-disable-next-line no-continue
-              continue;
-            }
-            try {
+        this.metaTick += 1;
+        const snapshot = [...this.strategies];
+        const running = this.status === StrategyServiceStatusEnum.RUNNING;
+        for (const strategy of snapshot) {
+          if (
+            this.removingIds.has(strategy.instance_id) ||
+            !this.strategies.includes(strategy)
+          ) {
+            // eslint-disable-next-line no-continue
+            continue;
+          }
+          try {
+            if (running) {
               // eslint-disable-next-line no-await-in-loop
               await strategy.action();
               // eslint-disable-next-line no-await-in-loop
               await strategy.saveStorageState();
-              if (this.metaTick % 5 === 0) {
-                // eslint-disable-next-line no-await-in-loop
-                await this.refreshInstanceMeta(strategy);
-              }
-            } catch (e) {
-              console.error('Web strategy error:', e);
-              this.log.error(
-                `拼多多实例 #${strategy.instance_id} 异常：${
-                  e instanceof Error ? e.message : String(e)
-                }`,
-              );
-              if (
-                this.isPageClosedError(e) &&
-                !this.removingIds.has(strategy.instance_id) &&
-                this.strategies.includes(strategy)
-              ) {
-                // eslint-disable-next-line no-await-in-loop
-                await this.handlePageClosed(strategy.instance_id);
-              }
+            }
+            // 未开自动回复也要探测扫码登录状态，否则卡片会一直停在「待扫码」
+            if (this.metaTick % 5 === 0 || !running) {
+              // eslint-disable-next-line no-await-in-loop
+              await this.refreshInstanceMeta(strategy);
+            }
+          } catch (e) {
+            console.error('Web strategy error:', e);
+            this.log.error(
+              `拼多多实例 #${strategy.instance_id} 异常：${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            );
+            if (
+              this.isPageClosedError(e) &&
+              !this.removingIds.has(strategy.instance_id) &&
+              this.strategies.includes(strategy)
+            ) {
+              // eslint-disable-next-line no-await-in-loop
+              await this.handlePageClosed(strategy.instance_id);
             }
           }
         }
@@ -519,16 +521,15 @@ export class WebStrategyService {
       }
 
       const pddInstances = instances.filter((i) => i.app_id === 'pinduoduo');
-      const activeIds = shouldRun
-        ? pddInstances
-            .filter((i) =>
-              shouldAttachPddOnSync({
-                shouldRun,
-                loginStatus: i.login_status,
-              }),
-            )
-            .map((i) => i.id)
-        : [];
+      // 扫码／保会话与自动回复开关解耦：未开自动回复也要挂 Chrome
+      const activeIds = pddInstances
+        .filter((i) =>
+          shouldAttachPddOnSync({
+            shouldRun,
+            loginStatus: i.login_status,
+          }),
+        )
+        .map((i) => i.id);
       // 每次以当前列表为准，避免与并发 remove 交错用到过期快照
       const runningIds = () => this.strategies.map((s) => s.instance_id);
 
@@ -539,20 +540,27 @@ export class WebStrategyService {
         }
       }
 
-      if (shouldRun) {
-        for (const inst of pddInstances) {
-          if (
-            !shouldAttachPddOnSync({
-              shouldRun,
-              loginStatus: inst.login_status,
-            })
-          ) {
-            // eslint-disable-next-line no-continue
-            continue;
-          }
-          if (!runningIds().includes(inst.id)) {
+      for (const inst of pddInstances) {
+        if (
+          !shouldAttachPddOnSync({
+            shouldRun,
+            loginStatus: inst.login_status,
+          })
+        ) {
+          // eslint-disable-next-line no-continue
+          continue;
+        }
+        if (!runningIds().includes(inst.id)) {
+          try {
             // eslint-disable-next-line no-await-in-loop
             await this.addTask(inst.app_id, inst.id);
+          } catch (e) {
+            this.log.error(
+              `无法打开拼多多 Chrome（实例 #${inst.id}）：${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            );
+            throw e;
           }
         }
       }

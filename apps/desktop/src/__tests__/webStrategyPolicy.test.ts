@@ -15,7 +15,7 @@ describe('webStrategyPolicy', () => {
     assert.equal(shouldAutoReopenBrowserOnPageClose(), false);
   });
 
-  it('sync skips closed pdd instances while auto-reply is on', () => {
+  it('sync keeps browser for scan login even when auto-reply is off', () => {
     assert.equal(
       shouldAttachPddOnSync({ shouldRun: true, loginStatus: 'closed' }),
       false,
@@ -26,6 +26,10 @@ describe('webStrategyPolicy', () => {
     );
     assert.equal(
       shouldAttachPddOnSync({ shouldRun: false, loginStatus: 'pending' }),
+      true,
+    );
+    assert.equal(
+      shouldAttachPddOnSync({ shouldRun: false, loginStatus: 'closed' }),
       false,
     );
   });

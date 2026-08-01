@@ -3,6 +3,8 @@ productName: 智能客服
 asar: true
 asarUnpack: "**\\*.{node,dll}"
 compression: maximum
+# Avoid rebuild wiping prebuilt sqlite3 N-API binaries (no MSVC on build host).
+npmRebuild: false
 files:
   - dist
   - node_modules

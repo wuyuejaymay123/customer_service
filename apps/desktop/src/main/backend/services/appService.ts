@@ -88,7 +88,23 @@ export class AppService {
         }
         const result = await this.dispatchService.updateTasks(tasks);
         if (!Array.isArray(result) || result.length === 0) {
-          throw new Error('添加任务失败，请重新尝试');
+          // 本机分配 env_id 兜底，避免 Strategy 空响应导致无法建拼多多实例
+          const fallback = tasks.map((task) => ({
+            task_id: String(task.id),
+            env_id: task.env_id || `local-${task.id}`,
+          }));
+          if (fallback.length === 0) {
+            throw new Error('添加任务失败，请重新尝试');
+          }
+          const created = fallback.find(
+            (task) => String(task.task_id) === String(instance.id),
+          );
+          if (!created) {
+            throw new Error('添加任务失败，请重新尝试');
+          }
+          instance.env_id = created.env_id;
+          await instance.save({ transaction: t });
+          return instance;
         }
 
         // 遍历 result 检查，判断是否存在 error 属性

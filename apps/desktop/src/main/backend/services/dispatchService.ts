@@ -326,6 +326,13 @@ export class DispatchService {
         env_id: task.env_id || `local-${task.id}`,
       }));
 
+    // 本版仅拼多多（WEB），不再依赖外部 Strategy 进程的 updateTasks。
+    // 若仍广播 socket，无客户端／空阵列会让「添加实例」误失败。
+    const onlyWeb = tasks.every((t) => t.app_id === 'pinduoduo');
+    if (onlyWeb || tasks.length === 0) {
+      return localResult();
+    }
+
     try {
       const result = await emitAndWait(
         this.io,
@@ -340,9 +347,9 @@ export class DispatchService {
         20000,
       );
       // 1.4.5 常回传 {} / 非阵列（无 updateTasks），不可对其 .find
-      if (!Array.isArray(result)) {
+      if (!Array.isArray(result) || result.length === 0) {
         console.warn(
-          'strategyService-updateTasks returned non-array, using local env ids:',
+          'strategyService-updateTasks returned empty/non-array, using local env ids:',
           result,
         );
         return localResult();

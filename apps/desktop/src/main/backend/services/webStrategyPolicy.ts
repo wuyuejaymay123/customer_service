@@ -9,12 +9,16 @@ export function shouldAutoReopenBrowserOnPageClose(): boolean {
   return false;
 }
 
-/** sync 是否应挂上该拼多多实例的浏览器 */
+/**
+ * sync 是否应挂上该拼多多实例的浏览器。
+ * 浏览器用于扫码登录／保会话，与「自动回复是否开启」解耦：
+ * - closed：用户已关窗，不自动重开（恢复自动回复时会先清成 pending）
+ * - pending / logged_in / unknown：即使自动回复暂停、网关未登录，也要挂浏览器以便扫码
+ */
 export function shouldAttachPddOnSync(opts: {
   shouldRun: boolean;
   loginStatus: string | null | undefined;
 }): boolean {
-  if (!opts.shouldRun) return false;
   if (opts.loginStatus === 'closed') return false;
   return true;
 }

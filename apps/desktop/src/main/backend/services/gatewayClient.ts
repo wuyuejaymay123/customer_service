@@ -102,6 +102,11 @@ export async function loginGateway(
         `网关地址不正确（收到 404）。请填写本机网关地址，不要加后台路径`,
       );
     }
+    if (resp.status === 403 && !json.message) {
+      throw new Error(
+        `无法访问网关（403）。若使用未备案域名，大陆网络会被拦截；请改用服务器 IP 或完成备案后再用域名`,
+      );
+    }
     throw new Error(json.message || `登录失败（错误码 ${resp.status}）`);
   }
   const auth: GatewayAuth = {
