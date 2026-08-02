@@ -296,6 +296,26 @@ export async function removeTask(taskId: string) {
   return data;
 }
 
+export async function setShopAutoReply(taskId: string, enabled: boolean) {
+  const data = await POST<{ success?: boolean; error?: string }>(
+    `/api/v1/strategy/task/shop-auto-reply`,
+    { taskId, enabled },
+  );
+  if (data && typeof data === 'object' && data.success === false) {
+    throw new Error(data.error || '更新店级自动回复失败');
+  }
+  return data;
+}
+
+export async function focusShopTask(taskId: string) {
+  const data = await POST<{
+    success?: boolean;
+    shopName?: string;
+    error?: string;
+  }>(`/api/v1/strategy/task/focus`, { taskId });
+  return data;
+}
+
 export async function getHandoffList() {
   const data = await GET<{ data: HandoffAlertItem[] }>('/api/v1/handoff/list');
   return data;

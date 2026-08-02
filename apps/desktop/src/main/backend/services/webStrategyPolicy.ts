@@ -88,3 +88,74 @@ export function pddLoginBadge(loginStatus: string | null | undefined): {
   }
   return { label: '未知', color: 'gray' };
 }
+
+/** 该店此刻是否应执行自动回复轮询（读消息／AI／发送） */
+export function shouldRunShopAutoReply(opts: {
+  masterOn: boolean;
+  shopEnabled: boolean;
+  loginStatus: string | null | undefined;
+}): boolean {
+  return (
+    opts.masterOn &&
+    opts.shopEnabled &&
+    opts.loginStatus === 'logged_in'
+  );
+}
+
+/** 打开 ShopAutoReply 前须已登录且会话可用 */
+export function canEnableShopAutoReply(
+  loginStatus: string | null | undefined,
+): boolean {
+  return loginStatus === 'logged_in';
+}
+
+export type ShopCardStatusLine = { label: string; color: string };
+
+/** DutyDesk 卡片：连线一行 + 自动回一行 */
+export function shopCardStatus(opts: {
+  loginStatus: string | null | undefined;
+  masterOn: boolean;
+  shopEnabled: boolean;
+  haltReason?: string | null;
+}): {
+  connection: ShopCardStatusLine;
+  autoReply: ShopCardStatusLine;
+} {
+  let connection: ShopCardStatusLine;
+  if (opts.loginStatus === 'logged_in') {
+    connection = { label: '已连接', color: 'green' };
+  } else if (opts.loginStatus === 'pending') {
+    connection = { label: '待扫码', color: 'orange' };
+  } else if (opts.loginStatus === 'closed') {
+    connection = { label: '已关闭', color: 'red' };
+  } else {
+    connection = { label: '未知', color: 'gray' };
+  }
+
+  let autoReply: ShopCardStatusLine;
+  if (opts.loginStatus === 'pending' || opts.loginStatus === 'unknown' || !opts.loginStatus) {
+    autoReply = { label: '未就绪', color: 'gray' };
+  } else if (!opts.masterOn) {
+    autoReply = { label: '总开关已关', color: 'orange' };
+  } else if (!opts.shopEnabled) {
+    if (opts.haltReason) {
+      autoReply = { label: '已停用', color: 'red' };
+    } else {
+      autoReply = { label: '人工接待', color: 'orange' };
+    }
+  } else if (opts.loginStatus === 'logged_in') {
+    autoReply = { label: '自动回复中', color: 'green' };
+  } else {
+    autoReply = { label: '未就绪', color: 'gray' };
+  }
+
+  return { connection, autoReply };
+}
+
+export function haltReasonLabel(reason: string | null | undefined): string {
+  if (reason === 'browser_closed') return '浏览器已关闭';
+  if (reason === 'logged_out') return '已掉登';
+  if (reason === 'drive_failures') return '连续驱动失败';
+  if (reason === 'duplicate_shop') return '店铺重复';
+  return reason || '';
+}

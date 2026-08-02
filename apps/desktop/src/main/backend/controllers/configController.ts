@@ -478,6 +478,17 @@ export class ConfigController {
     return false;
   }
 
+  /** CreditExhaustion：关闭 AutoReplyMaster（has_paused=true），若已关则返回 false */
+  public async pauseMasterForCreditExhaustion(): Promise<boolean> {
+    const dbConfig = await Config.findOne({
+      where: { global: true },
+    });
+    if (!dbConfig) return false;
+    if (dbConfig.has_paused) return false;
+    await dbConfig.update({ has_paused: true });
+    return true;
+  }
+
   /**
    * 查找配置
    * @param appId

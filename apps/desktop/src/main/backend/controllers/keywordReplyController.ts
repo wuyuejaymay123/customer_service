@@ -60,7 +60,15 @@ export class KeywordReplyController {
       new Map<string, string>(),
     );
 
-    const autoReplies: any = [];
+    const autoReplies: {
+      keyword: string;
+      reply: string;
+      mode: string;
+      platform_id: string;
+      fuzzy: boolean;
+      has_regular: boolean;
+      shop_id: null;
+    }[] = [];
 
     // 从第三行开始读取数据（跳过标题）
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
@@ -83,20 +91,64 @@ export class KeywordReplyController {
           platform_id: String(platformId),
           fuzzy,
           has_regular,
+          shop_id: null,
         });
       }
     });
 
-    const originalAutoReplies = await Keyword.findAll();
+    // Excel 仅覆盖「未绑定店铺」的渠道／全局词；各店专属关键词一律保留
+    const platformIds = [
+      ...new Set(
+        autoReplies.map((r) => r.platform_id).filter((id) => Boolean(id)),
+      ),
+    ];
+    const hasUnscopedRows = autoReplies.some((r) => !r.platform_id);
+    const shopUnscoped = {
+      [Op.or]: [{ shop_id: null }, { shop_id: '' }],
+    };
+    let replaceWhere: Record<string | symbol, unknown>;
+    if (platformIds.length > 0 && hasUnscopedRows) {
+      replaceWhere = {
+        [Op.and]: [
+          shopUnscoped,
+          {
+            [Op.or]: [
+              { platform_id: { [Op.in]: platformIds } },
+              { platform_id: null },
+              { platform_id: '' },
+            ],
+          },
+        ],
+      };
+    } else if (platformIds.length > 0) {
+      replaceWhere = {
+        [Op.and]: [shopUnscoped, { platform_id: { [Op.in]: platformIds } }],
+      };
+    } else {
+      replaceWhere = {
+        [Op.and]: [
+          shopUnscoped,
+          { [Op.or]: [{ platform_id: null }, { platform_id: '' }] },
+        ],
+      };
+    }
+
+    const originalAutoReplies = await Keyword.findAll({ where: replaceWhere });
 
     try {
-      // 先删除所有数据
-      await Keyword.destroy({ where: {} });
+      await Keyword.destroy({ where: replaceWhere });
       await Keyword.bulkCreate(autoReplies);
     } catch (error) {
-      // 如果插入失败，回滚数据
-      // @ts-ignore
-      await Keyword.bulkCreate(originalAutoReplies);
+      // 如果插入失败，回滚被替换的那一批
+      if (originalAutoReplies.length > 0) {
+        await Keyword.bulkCreate(
+          originalAutoReplies.map((row) => {
+            const plain = row.get({ plain: true }) as Record<string, unknown>;
+            delete plain.id;
+            return plain;
+          }),
+        );
+      }
       throw error;
     }
   }

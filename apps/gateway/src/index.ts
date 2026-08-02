@@ -1456,6 +1456,17 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
     throw e;
   }
 
+  // 桌面超时断开时：释放预扣、不结算，避免「已转人工仍扣点」
+  let clientGone = false;
+  const upstreamAbort = new AbortController();
+  const onClientClose = () => {
+    if (!res.writableEnded) {
+      clientGone = true;
+      upstreamAbort.abort();
+    }
+  };
+  req.on('close', onClientClose);
+
   const baseUrl = sku.rows[0].base_url.replace(/\/$/, '');
   try {
     const upstream = await fetch(`${baseUrl}/chat/completions`, {
@@ -1464,12 +1475,22 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${sku.rows[0].api_key}`,
       },
+      signal: upstreamAbort.signal,
       body: JSON.stringify({
         model: sku.rows[0].model,
         messages: upstreamMessages,
         stream: false,
       }),
     });
+    if (clientGone || req.aborted) {
+      await releaseReserve({
+        reserveId,
+        tenantId: user.tenantId,
+        operatorId: user.id,
+        errorMessage: 'client_disconnected_before_settle',
+      });
+      return;
+    }
     if (!upstream.ok) {
       const text = await upstream.text();
       await releaseReserve({
@@ -1478,7 +1499,9 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
         operatorId: user.id,
         errorMessage: text.slice(0, 500),
       });
-      res.status(502).json({ success: false, message: '智能回复服务暂时失败，请稍后重试' });
+      if (!res.headersSent) {
+        res.status(502).json({ success: false, message: '智能回复服务暂时失败，请稍后重试' });
+      }
       return;
     }
     const data = (await upstream.json()) as {
@@ -1490,6 +1513,15 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
         prompt_cache_miss_tokens?: number;
       };
     };
+    if (clientGone || req.aborted) {
+      await releaseReserve({
+        reserveId,
+        tenantId: user.tenantId,
+        operatorId: user.id,
+        errorMessage: 'client_disconnected_before_settle',
+      });
+      return;
+    }
     const content = data.choices?.[0]?.message?.content ?? '';
     const promptTokens = data.usage?.prompt_tokens ?? Math.ceil(estPrompt);
     const completionTokens =
@@ -1537,6 +1569,10 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
       });
       throw settleErr;
     }
+    if (clientGone || req.aborted || res.headersSent) {
+      // 极端竞态：已结算但客户端已走——无法退款，只避免再写响应
+      return;
+    }
     res.json({
       success: true,
       data: tenantChatSuccessData({
@@ -1545,13 +1581,25 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
       }),
     });
   } catch (e) {
+    const aborted =
+      clientGone ||
+      req.aborted ||
+      (e instanceof Error && e.name === 'AbortError');
     await releaseReserve({
       reserveId,
       tenantId: user.tenantId,
       operatorId: user.id,
-      errorMessage: e instanceof Error ? e.message : String(e),
+      errorMessage: aborted
+        ? 'client_disconnected_or_aborted'
+        : e instanceof Error
+          ? e.message
+          : String(e),
     });
-    res.status(500).json({ success: false, message: '网关异常，请稍后重试' });
+    if (!res.headersSent && !aborted) {
+      res.status(500).json({ success: false, message: '网关异常，请稍后重试' });
+    }
+  } finally {
+    req.off('close', onClientClose);
   }
 });
 

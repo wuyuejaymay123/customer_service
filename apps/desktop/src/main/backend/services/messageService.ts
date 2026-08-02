@@ -55,6 +55,10 @@ export class MessageService {
     | DifyAI
   >;
 
+  private onCreditExhausted?: () => Promise<void>;
+
+  private creditExhaustHandled = false;
+
   constructor(
     private log: LoggerService,
     private autoReplyController: KeywordReplyController,
@@ -64,6 +68,27 @@ export class MessageService {
     this.autoReplyController = autoReplyController;
 
     this.llmClientMap = new Map();
+  }
+
+  public setCreditExhaustedHandler(fn: () => Promise<void>) {
+    this.onCreditExhausted = fn;
+  }
+
+  private isCreditExhaustError(error: unknown): boolean {
+    const msg = error instanceof Error ? error.message : String(error);
+    return /点数|用量不足|余额不足|credit|402/i.test(msg);
+  }
+
+  private async handleCreditExhaustion(error: unknown): Promise<void> {
+    if (!this.isCreditExhaustError(error) || this.creditExhaustHandled) return;
+    this.creditExhaustHandled = true;
+    try {
+      if (this.onCreditExhausted) {
+        await this.onCreditExhausted();
+      }
+    } catch (e) {
+      console.warn('credit exhaustion handler failed', e);
+    }
   }
 
   /**
@@ -132,9 +157,15 @@ export class MessageService {
       }
     }
 
-    const buildPromise = this.buildAutoReply(cfg, ctx, messages, lastUserMsg);
+    const abort = new AbortController();
+    const buildPromise = this.buildAutoReply(
+      cfg,
+      ctx,
+      messages,
+      lastUserMsg,
+      abort.signal,
+    );
 
-    let timedOut = false;
     const reply = await Promise.race([
       buildPromise.then((r) => ({ kind: 'ok' as const, r })),
       new Promise<{ kind: 'timeout' }>((resolve) => {
@@ -143,11 +174,13 @@ export class MessageService {
     ]);
 
     if (this.handoff && !this.handoff.isEpochCurrent(sessionKey, epoch)) {
+      abort.abort();
       return { type: 'NO_REPLY' as MessageType, content: '' };
     }
 
     if (reply.kind === 'timeout') {
-      timedOut = true;
+      // 取消闸道请求：服务端应释放预扣、不结算扣点
+      abort.abort();
       this.handoff?.bumpEpoch(sessionKey);
       this.handoff?.raise({
         ctx,
@@ -245,6 +278,7 @@ export class MessageService {
     ctx: Context,
     messages: MessageDTO[],
     lastUserMsg: MessageDTO | undefined,
+    signal?: AbortSignal,
   ): Promise<ReplyDTO> {
     let hasDefaultReply = true;
     let reply: ReplyDTO | null = null;
@@ -268,8 +302,11 @@ export class MessageService {
       }
 
       if (cfg.has_use_gpt) {
+        if (signal?.aborted) {
+          return { type: 'TEXT' as MessageType, content: '' };
+        }
         this.log.info(`开始使用网关智能回复`);
-        const data = await this.getLLMResponse(cfg, ctx, working);
+        const data = await this.getLLMResponse(cfg, ctx, working, signal);
         if (data && data.content) {
           this.log.success(`智能回复已生成： ${data.content}`);
           reply = data;
@@ -521,6 +558,7 @@ export class MessageService {
     _cfg: Config,
     ctx: Context,
     messages: MessageDTO[],
+    signal?: AbortSignal,
   ): Promise<ReplyDTO | null> {
     // 智能客服系统：禁止 BYOK，一律走运营方 LLM Gateway
     try {
@@ -531,8 +569,10 @@ export class MessageService {
         return null;
       }
       await this.ensureShopContext(ctx);
-      const data = await gatewayChat({ auth, ctx, messages });
+      const data = await gatewayChat({ auth, ctx, messages, signal });
       if (data?.content) {
+        // 成功扣点后允许再次触发耗尽逻辑（充值后可能再耗尽）
+        this.creditExhaustHandled = false;
         this.log.success(
           `网关回复成功${
             data.creditCharged != null ? `，扣 ${data.creditCharged} 点` : ''
@@ -546,12 +586,19 @@ export class MessageService {
       this.log.warn('网关未返回正文');
       return null;
     } catch (error) {
+      const name = error instanceof Error ? error.name : '';
+      const msg = error instanceof Error ? error.message : String(error);
+      if (
+        name === 'AbortError' ||
+        /aborted|AbortError/i.test(msg) ||
+        signal?.aborted
+      ) {
+        this.log.info('智能回复已取消（超时或会话已切换）');
+        return null;
+      }
       console.error(`Error in getLLMResponse (gateway): ${error}`);
-      this.log.error(
-        `网关呼叫失败: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      this.log.error(`网关呼叫失败: ${msg}`);
+      await this.handleCreditExhaustion(error);
       return null;
     }
   }

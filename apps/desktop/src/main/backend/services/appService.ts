@@ -22,6 +22,8 @@ export class AppService {
       shop_name?: string | null;
       login_status?: string | null;
       gateway_shop_id?: string | null;
+      auto_reply_enabled: boolean;
+      auto_reply_halt_reason: string | null;
     }[]
   > {
     const instances = await Instance.findAll();
@@ -32,7 +34,44 @@ export class AppService {
       shop_name: instance.shop_name,
       login_status: instance.login_status,
       gateway_shop_id: instance.gateway_shop_id,
+      auto_reply_enabled: instance.auto_reply_enabled !== false,
+      auto_reply_halt_reason: instance.auto_reply_halt_reason || null,
     }));
+  }
+
+  /**
+   * ShopAutoReply：单独开／停某店自动回复（须已登录；开总闸后该店仍保持各自状态）
+   */
+  public async setShopAutoReply(
+    taskId: string,
+    enabled: boolean,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const instance = await Instance.findByPk(taskId);
+    if (!instance) {
+      return { ok: false, error: '实例不存在' };
+    }
+    if (enabled) {
+      const { canEnableShopAutoReply } = await import('./webStrategyPolicy');
+      if (!canEnableShopAutoReply(instance.login_status)) {
+        return {
+          ok: false,
+          error: '请先扫码登录并保持浏览器连接，再开启该店自动回复',
+        };
+      }
+      // 手动重新打开：清除 Halt 原因（确认可再跑）
+      instance.auto_reply_enabled = true;
+      instance.auto_reply_halt_reason = null;
+    } else {
+      // 手动暂停：只关开关，保留系统 Halt 原因便于卡片展示
+      instance.auto_reply_enabled = false;
+    }
+    await instance.save();
+    try {
+      await this.dispatchService.syncConfig();
+    } catch (e) {
+      console.warn('sync after setShopAutoReply failed:', e);
+    }
+    return { ok: true };
   }
 
   public async bindGatewayShop(

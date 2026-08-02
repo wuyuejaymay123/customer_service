@@ -92,17 +92,73 @@ _Avoid_: 請求體（過寬）
 
 ### 桌面與渠道
 
+**DutyDesk**：
+桌面客戶端打開後的主界面，面向 **Operator** 值班：以 **Shop** 為主視覺單位（店名＋連線／掃碼狀態），一眼看清各店與待接管，並控制 **AutoReplyMaster**／**ShopAutoReply**。Instance 僅作連線細節，不作為對外主標。首屏常駐＝Shop 列表＋回覆開關＋**HandoffAlert**；頂欄固定 **DeskStatus**；運行日誌可展開、回覆策略進 **SettingsCenter**；本版不在首屏放平台選擇器。未滿足 **DeskReady** 時不進入完整 DutyDesk，改走阻塞式就緒嚮導。
+_Avoid_: 控制台, 任務管理器, 把 TenantAdmin 配置台當首屏, 首屏同時並列配置與值班且無主次, 以「拼多多 #編號」當 Operator 主識別, 首屏常駐大塊滾動日誌與功能 checkbox 牆, 本版首屏再放多平台列表, 未就緒仍開放全部控件只靠日誌報錯
+
+**DeskStatus**：
+DutyDesk 頂欄精簡狀態：已登入身分（Operator／商戶帳號顯示名）、**Wallet** 的 Credit 餘額（低於閾值變色，點擊進 SettingsCenter「帳戶與點數」）、**AutoReplyMaster** 開／關。不含在線店數彙總或閘道指示燈（店級狀態看 Shop 卡片）。
+_Avoid_: 頂欄堆砌連線燈與店數統計, 頂欄無餘額與總閘狀態, 把餘額只藏在設置深處
+
+**CreditExhaustion**：
+Wallet 不足以完成智能回覆時的處置（關鍵詞僅為 AI 素材，不得在無 AI 時冒充最終回覆）：餘額偏低時 **DeskStatus** 預警；單次智能回扣不動／失敗則該會話走 **ReplyFailure／FailureHandoff**；餘額耗盡時系統關閉 **AutoReplyMaster** 並給 Operator 全局提醒（窗可留供人工），避免每條消息刷待接管。規則轉人工（TransferKeyword 短路）仍可生效。
+_Avoid_: 點數不足時用關鍵詞直出當最終回覆, 耗盡後仍假裝智能回可用, 耗盡時只靠每條 FailureHandoff 刷佇列而無總閘提示
+
+**DeskVisual**：
+DutyDesk／SettingsCenter 的視覺取向為**日間運營台**：淺底、清晰層級、狀態語義色（在線綠／待處理琥珀／失敗紅）；主色冷靜克制，避免大塊高飽和營銷橙與深色主題優先。
+_Avoid_: 深色值班台作第一版默認, 電商營銷風當主界面, 紫漸層／奶油襯線等通用模板臉, 卡片陰影與圓角堆疊搶狀態信息
+
+**DeskUIPhase1**：
+第一期可發安裝包必須**行為真實可用**（禁止僅 UI 假開關）：DeskReady 嚮導、DutyDesk（Shop 卡與 **ShopCardStatus**、AutoReplyMaster／ShopAutoReply 真生效、ShopAutoReplyHalt、HandoffAlert 常駐、DeskStatus、CreditExhaustion）、**ShopIsolation**／**MultiShopScheduling**、SettingsCenter 合併、DeskVisual 換皮；運行日誌可展開；關鍵詞／本店資料掛入設置側欄（交互可暫沿用舊頁，但按店隔離與注入須正確）。不含關鍵詞工作台大改、不含深色主題、不含完整桌面聊天室、不承諾 100% 窗聚焦與買家氣泡級跳轉。
+_Avoid_: 第一期只換顏色不動資訊架構, 第一期開關僅展示不生效, 第一期同時重做關鍵詞與本店全部交互, 第一期做買家氣泡級跳轉
+
+**ShopCardAction**：
+DutyDesk 上 Shop 卡片的主操作隨連線狀態變化：待掃碼→打開登錄窗；已登錄→本店設置（進 SettingsCenter 並預選該店）；已關閉→重新連接。ShopAutoReply 為次要控件；刪除等收入更多選單，避免與主按鈕同權重並列。
+_Avoid_: 固定三按鈕無主次, 整卡點進詳情當唯一交互, 齒輪／刪除／播放同排同視覺權重
+
+**ShopCardStatus**：
+Shop 卡片同時展示**連線狀態**與**自動回狀態**（兩行，不合成一個含糊標籤）。連線：待掃碼／已連接／已關閉。自動回：未就緒／自動回覆中／人工接待（手動停）／已停用（Halt，附短原因）／總開關已關。避免「已連接但人工」被誤讀成斷線。
+_Avoid_: 單一綜合狀態詞掩蓋「連著但人工」, 用「離線」指代手動停自動回
+
+**DeskReady**：
+進入完整 DutyDesk 前的就緒條件：已登入閘道（有效商戶會話）且至少有一家可值班的 Shop／Instance（含待掃碼）。就緒嚮導步驟固定為：登入商戶帳號 → 添加拼多多店並掃碼 →（可選）開啟 AutoReplyMaster。
+_Avoid_: 軟引導步驟條當唯一約束, 未登閘道仍可亂點開回覆, 把配置項一次性塞進嚮導
+
+**SettingsCenter**：
+桌面唯一設置界面：側欄分組為帳戶與點數、回覆策略、本店資料（含選店後的 ShopProfile／賣點與關鍵詞入口）、關於。DutyDesk 上 Shop 卡片「本店」捷徑打開同一中心並預選該店。本版取消獨立「平台齒輪」與獨立關鍵詞頂欄窗作為主路徑。
+_Avoid_: 全局／平台／實例三套設置窗並列, 關鍵詞永久獨立頂欄當唯一入口, 本版再保留多平台渠道設置入口
+
+**AutoReplyMaster**：
+DutyDesk 上的**全局**自動回覆總閘門（下班／上班）；關閉時所有 Shop 均不自動回覆。開啟時**不**自動清除各店的 ShopAutoReply 關閉狀態——此前手動停或 Halt 的店保持停，直至 Operator 在連線就緒後單獨打開該店。
+_Avoid_: hasPaused（實作欄位名）, 僅用「播放按鈕」而不說明作用域, 打開總閘就強制全部店恢復自動回
+
+**ShopAutoReply**：
+某一 Shop 的自動回覆開關；**僅在 AutoReplyMaster 開啟時生效**，可單獨暫停該店、其餘店繼續（該店改由人工在渠道頁接待）。Master 關閉時本開關不可單獨「強行開跑」。可由 Operator 手動關；也可因 **ShopAutoReplyHalt** 被系統關。關閉後 DutyDesk 上必須一眼可見「本店未在自動回」。**停自動回不自動關瀏覽器窗**（便於人工繼續接待）；僅 Operator 手動關窗或掉登才進入已關閉／待掃碼並可觸發 Halt。重新打開自動回前須該店連線就緒；掉登／已關閉時不可只撥開關就假裝恢復。不要求向買家宣告（避免露餡）。第一期：凡能登入桌面的閘道帳號，對總閘／店級開關權限相同；不做 TenantAdmin vs Operator 桌面權限拆分。
+_Avoid_: 只有店級無總閘, 只有總閘無法單店暫停, 把連線／掃碼狀態與是否自動回覆混成同一個開關, 靠向買家發露餡說明來代替 Operator 側狀態顯示, 單一會話失敗就默認關掉整店, 窗已關或待掃碼仍允許打開店級自動回, 停 ShopAutoReply 就自動關窗打斷人工接待, 第一期先做複雜桌面角色權限再做開關正確性
+
+**ShopAutoReplyHalt**：
+因店級故障把該店 **ShopAutoReply** 關掉（其餘店不受影響），並在卡片上標明原因。第一期觸發：瀏覽器／頁面被關；掉登／回到待掃碼；可選「連續多次店級驅動失敗」（預設連續 5 次，可配置）。**不**因單次 **ReplyFailure** 觸發；閘道點數不足或 Tenant 停用屬全局問題，走 **AutoReplyMaster**／**DeskStatus** 提示，不單獨 Halt 某一店。與 **FailureHandoff** 不同：後者是會話級冷卻＋待接管。Halt 時以 **Shop 卡片高亮＋獨立店級提醒**通知 Operator，**不**與買家維度的 **HandoffAlert** 佇列混為同一列表。
+_Avoid_: 與 FailureHandoff 混成同一開關, 故障時只打日誌不改店級狀態, 一單 ReplyFailure 就 Halt 整店, 點數不足只關一家店而其餘店假裝仍可智能回, 把「整店已停自動回」塞進買家待接管佇列當同一類條目
+
 **SupportedChannel**：
 正式擔保的平台渠道：拼多多。淘寶／千牛本版不做。
 _Avoid_: 全平台支持（營銷口徑，不作承諾）, 本版承諾千牛
 
 **Instance**：
 本機某個平台任務實例（沿用上游概念）；拼多多建議一 Instance 對應一 Shop，千牛可用一 Instance 覆蓋客戶端內多 Shop。
-_Avoid_: 店鋪連接（口語）, 把 Instance 當成 Shop 本身
+_Avoid_: 店鋪連接（口語）, 把 Instance 當成 Shop 本身, 在 DutyDesk 對外文案優先稱「任務／應用」而掩蓋 Shop
 
 **Shop**：
 Tenant 名下的一個對外經營店鋪（拼多多店或千牛／淘寶店等）；賣點、政策、話術與知識作用域以 Shop 為準，同一 Tenant 下多 Shop 彼此隔離。以顯示名、渠道與 **external_keys**（平台店名／店 ID／氣泡別名等）對上運行中的渠道身分。拼多多掃碼讀到店名後，桌面應自動建立（若不存在）並綁定 Instance↔Shop；本店設置無需再手動選店。
 _Avoid_: 店鋪連接, Instance（技術連接器）, 把整 Tenant 當一店, 僅靠單一顯示名且不可別名, 每次進設置都強制手動綁定
+
+**ShopIsolation**：
+多店並行時必須同時保證：（1）讀寫消息與發送只落在該店對應的瀏覽器會話／Instance，不得發到另一店窗；（2）自動回覆只用該店的 ShopProfile／賣點／關鍵詞等 Context，不得混用他店資料。允許同一瀏覽器進程內多個獨立會話（Context），不要求每店一個作業系統進程。按店記帳（Credit／Usage 歸屬）可另保證，但不取代上述兩條。同一 Tenant 本機運行中，**禁止**兩個 Instance 綁定／登錄為同一 Shop（掃碼或綁定時發現重複則拒絕並提示已在運行）；不允許「同店雙窗自動化」。
+_Avoid_: 只隔離窗不隔離知識, 把「同進程多 Context」當成串店缺陷, 用共用 cookie／共用頁面驅動多店, 同店多 Instance 並行自動化, 重複掃碼默認合併卻留下雙驅動窗
+
+**MultiShopScheduling**：
+多店同時有待回消息時，第一期以**串行排程**為準（一家處理完再處理下一家），接受短暫排隊延遲；若某單逼近 **ReplyTimeout**，走 **ReplyFailure／FailureHandoff**，不沉默拖過平台時限。不把「多店真並行處理」當第一期硬要求。
+_Avoid_: 第一期承諾多店零等待並行, 忙時只排隊卻不觸發超時接管, 為搶並行犧牲 ShopIsolation
 
 **ShopProfile**：
 掛在某一 Shop 上的結構化**整店共通**說明：店顯示名、可選店鋪定位、物流／發貨、售後政策、禁答、轉人工條件等；**不含**單品賣點。閘道回覆時按當前 Shop 注入。
@@ -136,8 +192,8 @@ _Avoid_: 僅依賴上游拋錯才放棄, 與「等待人工間隔」混為同一
 _Avoid_: 只打日誌不提醒, 只提醒不嘗試轉接（第一版不做）, 與規則轉人工混用不記原因, 失敗話術暴露自動化身分, 與 default_reply 混用同一文案, 一單失敗就暫停整實例自動回, 千牛第一版不做 FailureHandoff, 因 has_transfer 關閉而跳過失敗轉接
 
 **HandoffAlert**：
-桌面端運營可見的**待接管**提醒：主視窗佇列（店鋪／買家／原因／時間，可「已接手／恢復自動回」）＋聲音／系統通知。來源含 **FailureHandoff** 與**規則轉人工**（TransferKeyword），原因欄區分「回覆失敗」與「規則轉人工」。第一版不上報閘道、佇列不落盤（重啟清空）；短時間同因合併以免洗版。
-_Avoid_: 僅日誌一行, 僅一次性 toast 無佇列, 第一版做遠端閘道告警, 規則轉人工不進佇列導致無人盯, 失敗與規則轉人工無法區分原因
+桌面端運營可見的**待接管**提醒：DutyDesk **常駐區塊**（店鋪／買家／原因／時間）＋聲音／系統通知；無單時仍佔位並顯示空狀態（如「目前沒有待接管」）。每一行主操作為**去接待**：盡力打開／聚焦該店瀏覽器窗；失敗則提示「請手動切到「店名」窗口」。第一版不保證跳到具體買家氣泡，也不承諾 100% 聚焦成功。次要為「已接手」「恢復自動回」。來源含 **FailureHandoff** 與**規則轉人工**（TransferKeyword），原因欄區分二者。第一版不上報閘道、佇列不落盤（重啟清空）；短時間同因合併以免洗版。
+_Avoid_: 僅日誌一行, 僅一次性 toast 無佇列, 第一版做遠端閘道告警, 規則轉人工不進佇列導致無人盯, 失敗與規則轉人工無法區分原因, 無單時整區消失導致 Operator 不知道該盯哪, 主按鈕只消佇列不幫定位到店窗, 第一版承諾點進具體買家氣泡, 第一版承諾 100% 聚焦到正確窗否則不做去接待
 
 **TenantKnowledge**：
 （過渡／棄用方向）舊的 Tenant 級自由文本知識條目；正式模型改以 ShopProfile／ShopGoodsNote／TenantPolicy 為準。

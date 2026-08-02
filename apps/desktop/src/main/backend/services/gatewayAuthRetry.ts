@@ -14,7 +14,13 @@ export async function requestWithAuthRetry(opts: {
   auth: AuthLike;
   request: (token: string) => Promise<Response>;
   relogin: (auth: AuthLike) => Promise<AuthLike>;
+  signal?: AbortSignal;
 }): Promise<{ auth: AuthLike; response: Response }> {
+  if (opts.signal?.aborted) {
+    const err = new Error('The operation was aborted.');
+    err.name = 'AbortError';
+    throw err;
+  }
   let auth = opts.auth;
   if (!auth.token) {
     if (!canRelogin(auth)) {
@@ -30,6 +36,11 @@ export async function requestWithAuthRetry(opts: {
   }
   let response = await opts.request(auth.token!);
   if (response.status === 401) {
+    if (opts.signal?.aborted) {
+      const err = new Error('The operation was aborted.');
+      err.name = 'AbortError';
+      throw err;
+    }
     if (!canRelogin(auth)) {
       return { auth, response };
     }

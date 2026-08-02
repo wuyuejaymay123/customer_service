@@ -614,6 +614,8 @@ export async function gatewayChat(opts: {
   auth: GatewayAuth;
   ctx: Context;
   messages: MessageDTO[];
+  /** 桌面超时后取消，避免迟到回复仍扣点 */
+  signal?: AbortSignal;
 }): Promise<{ content: string; creditCharged?: number } | null> {
   const messages = opts.messages
     .filter((m) => m.role !== 'SYSTEM')
@@ -631,6 +633,7 @@ export async function gatewayChat(opts: {
 
   const { response: resp } = await requestWithAuthRetry({
     auth: opts.auth,
+    signal: opts.signal,
     relogin: (a) => {
       if (!a.password) {
         return Promise.reject(new Error('请重新登录网关'));
@@ -646,6 +649,7 @@ export async function gatewayChat(opts: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
+          signal: opts.signal,
           body: JSON.stringify({
             messages,
             goodsContext: buildGoodsContext(opts.ctx),

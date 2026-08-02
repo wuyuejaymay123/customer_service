@@ -10,13 +10,19 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { AddIcon } from '@chakra-ui/icons';
+import { useQuery } from '@tanstack/react-query';
 import InstanceCardComponent from './InstanceCardComponent';
 import { useAppManager } from './AppManagerContext';
 import { trackButtonClick } from '../../../common/services/analytics';
+import {
+  getConfig,
+} from '../../../common/services/platform/controller';
+import { DriverConfig } from '../../../common/services/platform/platform';
+import { useWebSocketContext } from '../../hooks/useBroadcastContext';
 
 const tipForApp = (appId: string | null): string => {
   if (appId === 'pinduoduo') {
-    return '拼多多：每个实例对应一家店。点 + 会开独立 Chrome，请分别扫码登录。若手动关闭浏览器，卡片会显示「已关闭」；暂停后再开自动回复可重新打开。';
+    return '拼多多：每个实例对应一家店。点 + 会开独立 Chrome，请分别扫码登录。关「本店自动回」不关浏览器；手动关窗或掉登会停用该店自动回。总开关开启后不会自动恢复已停用的店。';
   }
   if (appId === 'win_qianniu') {
     return '千牛：请在千牛客户端用「多店铺模式」登录并开气泡模式；此处只能建 1 个实例即可覆盖多店。';
@@ -39,11 +45,42 @@ const InstanceListComponent = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [currentAppId, setCurrentAppId] = useState(selectedAppId);
   const toast = useToast();
+  const { registerEventHandler } = useWebSocketContext();
+
+  const { data: driverData } = useQuery(['config', 'driver'], async () => {
+    const resp = await getConfig({ type: 'driver' });
+    return resp;
+  });
+  const masterOn = !(
+    (driverData?.data as DriverConfig | undefined)?.hasPaused ?? true
+  );
 
   useEffect(() => {
     setCurrentAppId(selectedAppId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAppId]);
+
+  useEffect(() => {
+    const handler = (message: { event: string; data?: any }) => {
+      if (message.event === 'shop_auto_reply_halt') {
+        const shop = message.data?.shopName || '某店铺';
+        const reason = message.data?.reasonLabel || '已停用';
+        toast({
+          title: `${shop} 已停用自动回复`,
+          description: reason,
+          status: 'warning',
+          position: 'top',
+          duration: 8000,
+          isClosable: true,
+        });
+        refetchTasks();
+      }
+      if (message.event === 'has_paused' || message.event === 'credit_exhausted') {
+        refetchTasks();
+      }
+    };
+    return registerEventHandler(handler);
+  }, [registerEventHandler, toast, refetchTasks]);
 
   const handleAddTaskWrapper = async () => {
     try {
@@ -103,9 +140,11 @@ const InstanceListComponent = () => {
       <InstanceCardComponent
         key={instance.task_id}
         instance={instance}
+        masterOn={masterOn}
         selectedInstanceId={selectedInstanceId}
         setSelectedInstanceId={setSelectedInstanceId}
         handleDelete={handleDelete}
+        onShopAutoReplyChanged={() => refetchTasks()}
         openSettings={async () => {
           setSelectedInstanceId(instance.task_id);
           const payload = {

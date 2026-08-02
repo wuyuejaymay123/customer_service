@@ -5,8 +5,32 @@ import { Page } from 'playwright';
 import axios from 'axios';
 import { getTempPath } from '..';
 
-export async function getChromePath(): Promise<string | null> {
-  const candidates = [
+/** Playwright chromium.launch 仅支持 Chromium 内核浏览器 */
+const CHROMIUM_PROG_IDS: { match: RegExp; label: string }[] = [
+  { match: /^ChromeHTML/i, label: 'chrome' },
+  { match: /^MSEdgeHTM/i, label: 'edge' },
+  { match: /^BraveHTML/i, label: 'brave' },
+  { match: /^ChromiumHTM/i, label: 'chromium' },
+  { match: /^OperaStable/i, label: 'opera' },
+];
+
+function fileExistsSync(p: string): boolean {
+  try {
+    return Boolean(p) && fs.existsSync(p);
+  } catch {
+    return false;
+  }
+}
+
+function firstExisting(candidates: string[]): string | null {
+  for (const p of candidates) {
+    if (fileExistsSync(p)) return p;
+  }
+  return null;
+}
+
+function chromeCandidates(): string[] {
+  return [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     process.env.LOCALAPPDATA
@@ -19,19 +43,128 @@ export async function getChromePath(): Promise<string | null> {
         )
       : '',
   ].filter(Boolean);
+}
 
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
+function edgeCandidates(): string[] {
+  return [
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    process.env.LOCALAPPDATA
+      ? path.join(
+          process.env.LOCALAPPDATA,
+          'Microsoft',
+          'Edge',
+          'Application',
+          'msedge.exe',
+        )
+      : '',
+  ].filter(Boolean);
+}
+
+function braveCandidates(): string[] {
+  return [
+    'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+    'C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+    process.env.LOCALAPPDATA
+      ? path.join(
+          process.env.LOCALAPPDATA,
+          'BraveSoftware',
+          'Brave-Browser',
+          'Application',
+          'brave.exe',
+        )
+      : '',
+  ].filter(Boolean);
+}
+
+function regQuery(key: string, valueName?: string): string | null {
+  try {
+    // /ve = 读取键的默认值；(Default) 在不同语言系统显示名不同
+    const args =
+      valueName && valueName !== '(Default)'
+        ? `reg query "${key}" /v ${valueName}`
+        : `reg query "${key}" /ve`;
+    const out = execSync(args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    });
+    const line = out
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => /REG_(SZ|EXPAND_SZ)/i.test(l));
+    if (!line) return null;
+    const parts = line.split(/\s{2,}/);
+    return parts[parts.length - 1]?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 从 ProgId 的 open 命令里抽出 .exe 路径 */
+function exeFromOpenCommand(cmd: string): string | null {
+  const quoted = cmd.match(/"([^"]+\.exe)"/i);
+  if (quoted?.[1]) return quoted[1];
+  const bare = cmd.match(/([A-Za-z]:\\[^\s"]+\.exe)/i);
+  return bare?.[1] || null;
+}
+
+function resolveProgIdExe(progId: string): string | null {
+  const cmd =
+    regQuery(`HKCR\\${progId}\\shell\\open\\command`) ||
+    regQuery(`HKEY_CLASSES_ROOT\\${progId}\\shell\\open\\command`);
+  if (!cmd) return null;
+  const exe = exeFromOpenCommand(cmd);
+  return exe && fileExistsSync(exe) ? exe : null;
+}
+
+/** 读取 Windows「默认打开 http 链接」的浏览器 ProgId */
+function getDefaultHttpProgId(): string | null {
+  return regQuery(
+    'HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice',
+    'ProgId',
+  );
+}
+
+function isChromiumProgId(progId: string): boolean {
+  return CHROMIUM_PROG_IDS.some((x) => x.match.test(progId));
+}
+
+/**
+ * 按系统默认浏览器优先，解析可用于 Playwright 的 Chromium 内核浏览器路径。
+ * 顺序：手动常见路径里的「系统默认」→ Edge → Chrome → Brave → where 查找
+ *
+ * Firefox / IE 等非 Chromium 内核不能用于当前拼多多自动化，会自动跳过并回落。
+ */
+export async function getChromePath(): Promise<string | null> {
+  if (process.platform === 'win32') {
+    const progId = getDefaultHttpProgId();
+    if (progId && isChromiumProgId(progId)) {
+      const fromDefault = resolveProgIdExe(progId);
+      if (fromDefault) return fromDefault;
+    }
   }
 
-  try {
-    const result = execSync('where chrome', { stdio: 'pipe' })
-      .toString()
-      .trim()
-      .split(/\r?\n/)[0];
-    if (result && fs.existsSync(result)) return result;
-  } catch {
-    // ignore
+  const fallback = firstExisting([
+    ...edgeCandidates(),
+    ...chromeCandidates(),
+    ...braveCandidates(),
+  ]);
+  if (fallback) return fallback;
+
+  for (const bin of ['msedge', 'chrome', 'brave']) {
+    try {
+      const result = execSync(`where ${bin}`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+      })
+        .trim()
+        .split(/\r?\n/)[0];
+      if (result && fileExistsSync(result)) return result;
+    } catch {
+      // ignore
+    }
   }
 
   return null;

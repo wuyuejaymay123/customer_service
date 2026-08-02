@@ -8,6 +8,9 @@ import {
   resolveLoginStatusFromProbe,
   qianniuRpaAction,
   pddLoginBadge,
+  shouldRunShopAutoReply,
+  canEnableShopAutoReply,
+  shopCardStatus,
 } from '../main/backend/services/webStrategyPolicy';
 
 describe('webStrategyPolicy', () => {
@@ -95,5 +98,74 @@ describe('webStrategyPolicy', () => {
     assert.equal(pddLoginBadge('unknown').label, '未知');
     assert.equal(pddLoginBadge('closed').label, '已关闭');
     assert.equal(pddLoginBadge('logged_in').label, '已登录');
+  });
+
+  it('shop auto-reply runs only when master on, shop enabled, logged in', () => {
+    assert.equal(
+      shouldRunShopAutoReply({
+        masterOn: true,
+        shopEnabled: true,
+        loginStatus: 'logged_in',
+      }),
+      true,
+    );
+    assert.equal(
+      shouldRunShopAutoReply({
+        masterOn: false,
+        shopEnabled: true,
+        loginStatus: 'logged_in',
+      }),
+      false,
+    );
+    assert.equal(
+      shouldRunShopAutoReply({
+        masterOn: true,
+        shopEnabled: false,
+        loginStatus: 'logged_in',
+      }),
+      false,
+    );
+    assert.equal(
+      shouldRunShopAutoReply({
+        masterOn: true,
+        shopEnabled: true,
+        loginStatus: 'pending',
+      }),
+      false,
+    );
+  });
+
+  it('enabling shop auto-reply requires logged-in session', () => {
+    assert.equal(canEnableShopAutoReply('logged_in'), true);
+    assert.equal(canEnableShopAutoReply('pending'), false);
+    assert.equal(canEnableShopAutoReply('closed'), false);
+  });
+
+  it('shop card shows connection and auto-reply lines separately', () => {
+    const human = shopCardStatus({
+      loginStatus: 'logged_in',
+      masterOn: true,
+      shopEnabled: false,
+      haltReason: null,
+    });
+    assert.equal(human.connection.label, '已连接');
+    assert.equal(human.autoReply.label, '人工接待');
+
+    const masterOff = shopCardStatus({
+      loginStatus: 'logged_in',
+      masterOn: false,
+      shopEnabled: true,
+      haltReason: null,
+    });
+    assert.equal(masterOff.autoReply.label, '总开关已关');
+
+    const halted = shopCardStatus({
+      loginStatus: 'closed',
+      masterOn: true,
+      shopEnabled: false,
+      haltReason: 'browser_closed',
+    });
+    assert.equal(halted.connection.label, '已关闭');
+    assert.equal(halted.autoReply.label, '已停用');
   });
 });

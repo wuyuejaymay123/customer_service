@@ -57,10 +57,24 @@ const Panels = () => {
         }));
 
         toast({
-          title: '自动回复已暂停',
+          title: '自动回复总开关已关闭',
           status: 'info',
           position: 'top',
           duration: 5000,
+          isClosable: true,
+        });
+      }
+      if (message.event === 'credit_exhausted') {
+        setDriverSettings((prevSettings) => ({
+          ...prevSettings,
+          hasPaused: true,
+        }));
+        toast({
+          title: '点数已耗尽',
+          description: '已关闭自动回复总开关，请充值后手动重新开启',
+          status: 'error',
+          position: 'top',
+          duration: 12000,
           isClosable: true,
         });
       }
@@ -115,10 +129,10 @@ const Panels = () => {
 
       if ('hasPaused' in newConfig) {
         toast({
-          title: '更新配置成功',
+          title: '总开关已更新',
           description: newConfig.hasPaused
-            ? '已经暂停自动回复功能'
-            : '已经开启自动回复功能',
+            ? '已关闭：所有店铺暂停自动回复（各店开关状态保留）'
+            : '已开启：仅对已打开本店自动回且已连接的店铺生效',
           status: 'success',
           duration: 5000,
           isClosable: true,
@@ -141,14 +155,19 @@ const Panels = () => {
     <Stack spacing={4}>
       <HStack width="full" alignItems="center" justifyContent="space-between">
         <VStack width="35%">
-          <Text fontSize="md">
-            按下{driverSettings.hasPaused ? '开启' : '关闭'}自动回复
+          <Text fontSize="md" fontWeight="medium">
+            自动回复总开关
+          </Text>
+          <Text fontSize="xs" color="gray.500">
+            {driverSettings.hasPaused
+              ? '当前已关 · 点击开启'
+              : '当前已开 · 点击关闭'}
           </Text>
           <IconButton
             icon={driverSettings.hasPaused ? <FiPlay /> : <FiPause />}
-            aria-label="Pause/Play"
+            aria-label="AutoReplyMaster"
             size="lg"
-            mt={2}
+            mt={1}
             onClick={() =>
               handleUpdateConfig({ hasPaused: !driverSettings.hasPaused })
             }

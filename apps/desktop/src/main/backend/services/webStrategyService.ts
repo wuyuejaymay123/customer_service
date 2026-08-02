@@ -26,7 +26,10 @@ import {
   loginStatusAfterDriverResume,
   loginStatusOnAttach,
   resolveLoginStatusFromProbe,
+  shouldRunShopAutoReply,
+  haltReasonLabel,
 } from './webStrategyPolicy';
+import { Op } from 'sequelize';
 
 const downloadPath = path.join(os.homedir(), 'Downloads');
 
@@ -53,7 +56,39 @@ export class WebStrategyService {
 
   private lastShouldRun = false;
 
+  /** master 开时，允许自动回复轮询的 instanceId */
+  private autoReplyActiveIds = new Set<number>();
+
+  /** 连续店级驱动失败计数（达阈值 Halt） */
+  private driveFailCounts = new Map<number, number>();
+
+  private static readonly DRIVE_FAIL_THRESHOLD = 5;
+
   private syncMutex: Promise<void> = Promise.resolve();
+
+  private async haltShopAutoReply(
+    inst: Instance,
+    reason: string,
+  ): Promise<void> {
+    const wasEnabled = inst.auto_reply_enabled !== false;
+    inst.auto_reply_enabled = false;
+    inst.auto_reply_halt_reason = reason;
+    await inst.save();
+    this.autoReplyActiveIds.delete(inst.id);
+    this.driveFailCounts.delete(inst.id);
+    if (wasEnabled || reason) {
+      const label = haltReasonLabel(reason) || reason;
+      this.log.warn(
+        `店铺「${inst.shop_name || `#${inst.id}`}」已停用自动回复：${label}`,
+      );
+      this.log.emit('shop_auto_reply_halt', {
+        taskId: String(inst.id),
+        shopName: inst.shop_name || `#${inst.id}`,
+        reason,
+        reasonLabel: label,
+      });
+    }
+  }
 
   constructor(
     private log: LoggerService,
@@ -107,7 +142,6 @@ export class WebStrategyService {
       try {
         this.metaTick += 1;
         const snapshot = [...this.strategies];
-        const running = this.status === StrategyServiceStatusEnum.RUNNING;
         for (const strategy of snapshot) {
           if (
             this.removingIds.has(strategy.instance_id) ||
@@ -117,14 +151,16 @@ export class WebStrategyService {
             continue;
           }
           try {
-            if (running) {
+            const shopRun = this.autoReplyActiveIds.has(strategy.instance_id);
+            if (shopRun) {
               // eslint-disable-next-line no-await-in-loop
               await strategy.action();
               // eslint-disable-next-line no-await-in-loop
               await strategy.saveStorageState();
+              this.driveFailCounts.set(strategy.instance_id, 0);
             }
             // 未开自动回复也要探测扫码登录状态，否则卡片会一直停在「待扫码」
-            if (this.metaTick % 5 === 0 || !running) {
+            if (this.metaTick % 5 === 0 || !shopRun) {
               // eslint-disable-next-line no-await-in-loop
               await this.refreshInstanceMeta(strategy);
             }
@@ -142,6 +178,21 @@ export class WebStrategyService {
             ) {
               // eslint-disable-next-line no-await-in-loop
               await this.handlePageClosed(strategy.instance_id);
+            } else if (
+              this.autoReplyActiveIds.has(strategy.instance_id) &&
+              !this.isPageClosedError(e)
+            ) {
+              const n =
+                (this.driveFailCounts.get(strategy.instance_id) || 0) + 1;
+              this.driveFailCounts.set(strategy.instance_id, n);
+              if (n >= WebStrategyService.DRIVE_FAIL_THRESHOLD) {
+                // eslint-disable-next-line no-await-in-loop
+                const inst = await Instance.findByPk(strategy.instance_id);
+                if (inst && inst.auto_reply_enabled !== false) {
+                  // eslint-disable-next-line no-await-in-loop
+                  await this.haltShopAutoReply(inst, 'drive_failures');
+                }
+              }
             }
           }
         }
@@ -159,6 +210,7 @@ export class WebStrategyService {
       const inst = await Instance.findByPk(strategy.instance_id);
       if (!inst) return;
       let dirty = false;
+      const prevStatus = inst.login_status;
       const nextStatus = resolveLoginStatusFromProbe(
         inst.login_status,
         meta.loginStatus,
@@ -178,6 +230,39 @@ export class WebStrategyService {
             meta.shopName || '未命名店铺'
           }（${inst.login_status === 'logged_in' ? '已登录' : '待扫码'}）`,
         );
+      }
+      // 掉登：整店 Halt（不关窗；会话仍在 pending）
+      if (
+        prevStatus === 'logged_in' &&
+        inst.login_status === 'pending' &&
+        inst.auto_reply_enabled !== false
+      ) {
+        await this.haltShopAutoReply(inst, 'logged_out');
+      }
+      // 同店双开：拒绝第二家自动化
+      if (inst.login_status === 'logged_in' && (inst.shop_name || inst.gateway_shop_id)) {
+        const dupWhere: Record<string, unknown>[] = [];
+        if (inst.shop_name) {
+          dupWhere.push({ shop_name: inst.shop_name });
+        }
+        if (inst.gateway_shop_id) {
+          dupWhere.push({ gateway_shop_id: inst.gateway_shop_id });
+        }
+        const dup = await Instance.findOne({
+          where: {
+            app_id: 'pinduoduo',
+            id: { [Op.ne]: inst.id },
+            [Op.or]: dupWhere,
+          },
+        });
+        if (dup) {
+          await this.haltShopAutoReply(inst, 'duplicate_shop');
+          this.log.error(
+            `店铺「${inst.shop_name}」已在实例 #${dup.id} 运行，请勿重复扫码；本实例已停用自动回复`,
+          );
+          await this.removeTask(inst.id, false);
+          return;
+        }
       }
       // 扫码拿到店名后，自动建／绑网关店铺（需已登录网关）
       if (inst.shop_name && !inst.gateway_shop_id) {
@@ -230,10 +315,10 @@ export class WebStrategyService {
     }
 
     this.log.warn(
-      `拼多多实例 #${instanceId} 浏览器已关闭，标记为 closed（暂停自动回复再开可恢复）`,
+      `拼多多实例 #${instanceId} 浏览器已关闭，标记为 closed 并停用该店自动回复`,
     );
     inst.login_status = 'closed';
-    await inst.save();
+    await this.haltShopAutoReply(inst, 'browser_closed');
     await this.removeTask(instanceId, false);
   }
 
@@ -251,9 +336,10 @@ export class WebStrategyService {
     const found = await getChromePath();
     if (!found) {
       throw new Error(
-        '找不到 Chrome。请安装 Google Chrome，或在设置中填写 chrome 路径。',
+        '找不到可用的 Chromium 内核浏览器（系统默认需为 Edge／Chrome／Brave 等）。请安装 Microsoft Edge 或 Google Chrome，或在设置中填写浏览器路径。',
       );
     }
+    this.log.info(`使用浏览器：${found}`);
     return found;
   }
 
@@ -425,8 +511,47 @@ export class WebStrategyService {
     await this.refreshInstanceMeta(strategy);
   }
 
+  /** 去接待：尽力聚焦该店 Chrome 窗 */
+  async focusInstance(instanceId: number): Promise<{
+    ok: boolean;
+    shopName?: string;
+    error?: string;
+  }> {
+    const inst = await Instance.findByPk(instanceId);
+    const shopName = inst?.shop_name || (inst ? `#${inst.id}` : undefined);
+    const strategy = this.strategies.find((s) => s.instance_id === instanceId);
+    if (!strategy) {
+      return {
+        ok: false,
+        shopName,
+        error: shopName
+          ? `请手动切到「${shopName}」窗口`
+          : '浏览器未连接，请手动打开对应店铺窗口',
+      };
+    }
+    try {
+      const page = strategy.page;
+      if (!page || page.isClosed()) {
+        return {
+          ok: false,
+          shopName,
+          error: `请手动切到「${shopName || '该店'}」窗口`,
+        };
+      }
+      await page.bringToFront();
+      return { ok: true, shopName };
+    } catch (e) {
+      return {
+        ok: false,
+        shopName,
+        error: `请手动切到「${shopName || '该店'}」窗口`,
+      };
+    }
+  }
+
   async removeTask(instanceId: number, deleteSession = false) {
     this.removingIds.add(instanceId);
+    this.driveFailCounts.delete(instanceId);
     try {
       const idx = this.strategies.findIndex((s) => s.instance_id === instanceId);
       if (idx === -1) {
@@ -498,9 +623,23 @@ export class WebStrategyService {
       }
       this.lastShouldRun = shouldRun;
 
-      this.status = shouldRun
-        ? StrategyServiceStatusEnum.RUNNING
-        : StrategyServiceStatusEnum.STOPPED;
+      const pddInstances = instances.filter((i) => i.app_id === 'pinduoduo');
+      this.autoReplyActiveIds = new Set(
+        pddInstances
+          .filter((i) =>
+            shouldRunShopAutoReply({
+              masterOn: shouldRun,
+              shopEnabled: i.auto_reply_enabled !== false,
+              loginStatus: i.login_status,
+            }),
+          )
+          .map((i) => i.id),
+      );
+
+      this.status =
+        this.autoReplyActiveIds.size > 0
+          ? StrategyServiceStatusEnum.RUNNING
+          : StrategyServiceStatusEnum.STOPPED;
       G_V.status = this.status;
 
       const generic = await this.configController.getConfigByType({
@@ -520,7 +659,6 @@ export class WebStrategyService {
         }
       }
 
-      const pddInstances = instances.filter((i) => i.app_id === 'pinduoduo');
       // 扫码／保会话与自动回复开关解耦：未开自动回复也要挂 Chrome
       const activeIds = pddInstances
         .filter((i) =>

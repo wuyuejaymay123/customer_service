@@ -15,6 +15,12 @@ export class Instance extends Model {
   /** 网关 Shop.id（UUID） */
   declare gateway_shop_id: string | null;
 
+  /** ShopAutoReply：该店是否允许自动回复（仍受 AutoReplyMaster 约束） */
+  declare auto_reply_enabled: boolean;
+
+  /** ShopAutoReplyHalt 原因：browser_closed | logged_out | drive_failures | … */
+  declare auto_reply_halt_reason: string | null;
+
   declare created_at: string;
 }
 
@@ -44,6 +50,15 @@ export function initInstance(sequelize: Sequelize) {
         defaultValue: 'unknown',
       },
       gateway_shop_id: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+      },
+      auto_reply_enabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+      },
+      auto_reply_halt_reason: {
         type: DataTypes.STRING(64),
         allowNull: true,
       },
@@ -80,6 +95,16 @@ export async function migrateInstanceColumns(sequelize: Sequelize) {
   if (!names.has('gateway_shop_id')) {
     await sequelize.query(
       `ALTER TABLE instance ADD COLUMN gateway_shop_id VARCHAR(64)`,
+    );
+  }
+  if (!names.has('auto_reply_enabled')) {
+    await sequelize.query(
+      `ALTER TABLE instance ADD COLUMN auto_reply_enabled INTEGER NOT NULL DEFAULT 1`,
+    );
+  }
+  if (!names.has('auto_reply_halt_reason')) {
+    await sequelize.query(
+      `ALTER TABLE instance ADD COLUMN auto_reply_halt_reason VARCHAR(64)`,
     );
   }
 }

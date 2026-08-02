@@ -312,6 +312,14 @@ export class DispatchService {
     await this.webStrategy.removeTask(instanceId, deleteSession);
   }
 
+  public async focusWebInstance(instanceId: number): Promise<{
+    ok: boolean;
+    shopName?: string;
+    error?: string;
+  }> {
+    return this.webStrategy.focusInstance(instanceId);
+  }
+
   public async updateTasks(tasks: Instance[]): Promise<
     | {
         task_id: string;

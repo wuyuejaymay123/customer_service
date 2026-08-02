@@ -16,6 +16,10 @@ export interface Instance {
   shop_name?: string | null;
   login_status?: string | null;
   gateway_shop_id?: string | null;
+  /** ShopAutoReply：该店是否允许自动回复 */
+  auto_reply_enabled?: boolean;
+  /** ShopAutoReplyHalt 原因码 */
+  auto_reply_halt_reason?: string | null;
 }
 
 export interface PlatformSettings {

@@ -63,4 +63,9 @@ export class LoggerService {
       },
     });
   }
+
+  /** 向主窗口推送业务事件（Halt／点数耗尽等） */
+  public emit(event: string, data: Record<string, unknown> = {}) {
+    this.mainWindow.webContents.send('broadcast', { event, data });
+  }
 }

@@ -93,6 +93,24 @@ class BKServer {
 
     this.appService = new AppService(this.dispatchService, sequelize);
 
+    this.messageService.setCreditExhaustedHandler(async () => {
+      const changed =
+        await this.configController.pauseMasterForCreditExhaustion();
+      if (!changed) return;
+      this.loggerService.error(
+        '点数已耗尽：已关闭自动回复总开关，请充值后手动重新开启',
+      );
+      this.dispatchService.receiveBroadcast({
+        event: 'credit_exhausted',
+        data: {},
+      });
+      try {
+        await this.dispatchService.syncConfig();
+      } catch (e) {
+        console.warn('sync after credit exhaustion failed:', e);
+      }
+    });
+
     this.configureSocketIO();
     this.setupRoutes();
     // 开启定时任务
@@ -805,6 +823,37 @@ class BKServer {
         });
       } catch (error) {
         console.error(error);
+        res.json({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    // ShopAutoReply：单店开／停自动回复
+    this.app.post('/api/v1/strategy/task/shop-auto-reply', async (req, res) => {
+      const { taskId, enabled } = req.body || {};
+      try {
+        const r = await this.appService.setShopAutoReply(
+          String(taskId),
+          Boolean(enabled),
+        );
+        res.json({ success: r.ok, error: r.error });
+      } catch (error) {
+        res.json({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    // 去接待：尽力聚焦该店浏览器窗
+    this.app.post('/api/v1/strategy/task/focus', async (req, res) => {
+      const { taskId } = req.body || {};
+      try {
+        const r = await this.dispatchService.focusWebInstance(Number(taskId));
+        res.json({ success: r.ok, shopName: r.shopName, error: r.error });
+      } catch (error) {
         res.json({
           success: false,
           error: error instanceof Error ? error.message : String(error),

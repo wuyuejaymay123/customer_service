@@ -6,6 +6,8 @@ import AppManager from '../../components/AppManager/index';
 import Panels from '../../components/Panels';
 import LogBox from '../../components/LogBox';
 import HandoffQueue from '../../components/HandoffQueue';
+import DeskStatus from '../../components/DeskStatus';
+import DeskReady from '../../components/DeskReady';
 
 const HomePage = () => {
   const currentVersion = window.electron.ipcRenderer.get('get-version');
@@ -16,22 +18,27 @@ const HomePage = () => {
 
   return (
     <PageContainer>
-      <Stack spacing={2}>
-        <Box>
-          <AppManager />
-        </Box>
-        <Divider my="4" />
-        <Box>
-          <Panels />
-        </Box>
-        <Divider my="4" />
-        <Box>
-          <HandoffQueue />
-        </Box>
-        <Box>
-          <LogBox />
-        </Box>
-      </Stack>
+      <DeskReady>
+        <Stack spacing={2}>
+          <Box>
+            <DeskStatus />
+          </Box>
+          <Box>
+            <AppManager />
+          </Box>
+          <Divider my="4" />
+          <Box>
+            <Panels />
+          </Box>
+          <Divider my="4" />
+          <Box>
+            <HandoffQueue />
+          </Box>
+          <Box>
+            <LogBox />
+          </Box>
+        </Stack>
+      </DeskReady>
     </PageContainer>
   );
 };

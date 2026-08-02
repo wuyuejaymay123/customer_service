@@ -251,8 +251,12 @@ export class Pinduoduo extends StrategyLifecycle {
     const rl = await this.checkRole(lastMessage);
     if (rl === RoleTypeEnum.SELF) return;
 
+    const cfg = await this.getConfig(Pinduoduo.info().id, this.instance_id);
+    const contextCount =
+      cfg.contextCount && cfg.contextCount > 0 ? cfg.contextCount : 20;
+
     const messages: MessageDTO[] = [];
-    const recentMessages = lastSomeMessages.slice(-G_V.contextCount);
+    const recentMessages = lastSomeMessages.slice(-contextCount);
 
     const ctx = await this.getContext();
     if (!ctx) return;
@@ -281,8 +285,6 @@ export class Pinduoduo extends StrategyLifecycle {
     await chatInput.focus();
     await this.page.waitForTimeout(1000);
 
-    const cfg = await this.getConfig(Pinduoduo.info().id, this.instance_id);
-
     if (reply.type === MsgTypeEnum.IMAGE) {
       try {
         await uploadFile(this.page, "input[type='file']", reply.content);
@@ -308,7 +310,7 @@ export class Pinduoduo extends StrategyLifecycle {
       // 有正文则先发安抚（FailureHandoff／规则转人工），不依赖 hasTransferReply 开关
       if (replyContent.trim() && replyContent.trim() !== '无') {
         try {
-          await this.sendReply(replyContent, chatInput);
+          await this.sendReply(replyContent, chatInput, cfg);
         } catch (e) {
           this.log.error(
             `转接前安抚发送失败：${e}`,
@@ -316,7 +318,7 @@ export class Pinduoduo extends StrategyLifecycle {
           );
         }
       } else if (cfg.hasTransferReply && (cfg.defaultTransferReply || '').trim()) {
-        await this.sendReply(cfg.defaultTransferReply || '', chatInput);
+        await this.sendReply(cfg.defaultTransferReply || '', chatInput, cfg);
       }
 
       try {
@@ -332,7 +334,7 @@ export class Pinduoduo extends StrategyLifecycle {
     }
 
     try {
-      await this.sendReply(reply.content, chatInput);
+      await this.sendReply(reply.content, chatInput, cfg);
     } catch (e) {
       this.log.error(`发送回复失败：${e}`, this.getLogInstance());
       const handoff = await this.getDefReply(ctx);
@@ -341,7 +343,7 @@ export class Pinduoduo extends StrategyLifecycle {
         const replyContent = reply.content || '';
         if (replyContent.trim() && replyContent.trim() !== '无') {
           try {
-            await this.sendReply(replyContent, chatInput);
+            await this.sendReply(replyContent, chatInput, cfg);
           } catch {
             // ignore
           }
@@ -357,12 +359,17 @@ export class Pinduoduo extends StrategyLifecycle {
     }
   }
 
-  async sendReply(content: string, chatInput: Locator) {
-    const sentences = this.splitText(
-      content,
-      G_V.truncateWordCount,
-      G_V.truncateWordKey,
-    );
+  async sendReply(
+    content: string,
+    chatInput: Locator,
+    cfg?: GenericConfig,
+  ) {
+    const truncateCount =
+      cfg?.truncateWordCount && cfg.truncateWordCount > 0
+        ? cfg.truncateWordCount
+        : G_V.truncateWordCount || 210;
+    const truncateKey = cfg?.truncateWordKey ?? G_V.truncateWordKey ?? '';
+    const sentences = this.splitText(content, truncateCount, truncateKey);
 
     for (const sentence of sentences) {
       const cleanSentence = sentence
