@@ -169,6 +169,26 @@ export class AppService {
           await this.dispatchService.syncConfig();
         } catch (e) {
           console.warn('sync after addTask failed:', e);
+          if (appId === 'pinduoduo') {
+            throw new Error(
+              `实例已创建，但未能打开浏览器：${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            );
+          }
+        }
+        if (appId === 'pinduoduo') {
+          const fresh = await Instance.findByPk(instance.id);
+          if (
+            !fresh ||
+            fresh.login_status === 'unknown' ||
+            fresh.login_status === 'closed'
+          ) {
+            throw new Error(
+              '实例已创建，但未能打开拼多多登录窗口。请确认已安装 Edge／Chrome，或在设置中填写浏览器路径后重试「新增」。',
+            );
+          }
+          return fresh;
         }
         return instance;
       })

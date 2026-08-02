@@ -23,6 +23,7 @@ import { MessageController } from '../controllers/messageController';
 import {
   shouldAutoReopenBrowserOnPageClose,
   shouldAttachPddOnSync,
+  shouldDropDeadStrategyForResync,
   loginStatusAfterDriverResume,
   loginStatusOnAttach,
   resolveLoginStatusFromProbe,
@@ -206,6 +207,20 @@ export class WebStrategyService {
 
   private async refreshInstanceMeta(strategy: Pinduoduo) {
     try {
+      let pageClosed = false;
+      try {
+        pageClosed = !strategy.page || strategy.page.isClosed();
+      } catch {
+        pageClosed = true;
+      }
+      if (pageClosed) {
+        if (this.browser?.isConnected()) {
+          await this.handlePageClosed(strategy.instance_id);
+        } else {
+          await this.removeTask(strategy.instance_id, false);
+        }
+        return;
+      }
       const meta = await strategy.probeShopMeta();
       const inst = await Instance.findByPk(strategy.instance_id);
       if (!inst) return;
@@ -355,6 +370,59 @@ export class WebStrategyService {
     this.browser = null;
   }
 
+  /**
+   * 浏览器进程已死或页面已关：卸下 zombie。
+   * - 进程崩溃：不写 closed，sync 可重挂
+   * - 浏览器仍在、仅页面关：走 handlePageClosed（用户关窗）
+   */
+  private async pruneDeadStrategies(): Promise<void> {
+    const browserConnected = Boolean(this.browser?.isConnected());
+    const snapshot = [...this.strategies];
+    for (const strategy of snapshot) {
+      let pageClosed = true;
+      try {
+        pageClosed = !strategy.page || strategy.page.isClosed();
+      } catch {
+        pageClosed = true;
+      }
+      if (
+        !shouldDropDeadStrategyForResync({ browserConnected, pageClosed })
+      ) {
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+      if (browserConnected && pageClosed) {
+        // eslint-disable-next-line no-await-in-loop
+        await this.handlePageClosed(strategy.instance_id);
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+      this.log.warn(
+        `拼多多实例 #${strategy.instance_id} 浏览器已断开，准备重新打开窗口`,
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await this.removeTask(strategy.instance_id, false);
+    }
+    if (!browserConnected) {
+      await this.evictStaleContexts();
+    }
+  }
+
+  private bindBrowserDisconnect(browser: Browser) {
+    browser.on('disconnected', () => {
+      if (this.browser !== browser) return;
+      this.log.warn('拼多多 Chrome／Edge 进程已退出，将在下次同步时重开');
+      this.browser = null;
+      this.contextByInstance.clear();
+      // 卸下 zombie；不标 closed，便于新增／sync 重新弹窗
+      const ids = this.strategies.map((s) => s.instance_id);
+      this.strategies = [];
+      for (const id of ids) {
+        this.driveFailCounts.delete(id);
+      }
+    });
+  }
+
   private async getOrCreateContext(
     instanceId: number,
   ): Promise<BrowserContext> {
@@ -378,6 +446,7 @@ export class WebStrategyService {
           '--disable-infobars',
         ],
       });
+      this.bindBrowserDisconnect(this.browser);
     }
 
     // 每个实例独立 context，绝不与其他实例共用 cookie
@@ -504,7 +573,24 @@ export class WebStrategyService {
     }
 
     // session 只在 start() 建 page 后载入一次，避免重复 addCookies／initScript
-    await strategy.start();
+    try {
+      await strategy.start();
+      strategy.page.on('close', () => {
+        // 进程崩溃时由 disconnected／prune 处理，避免误标 closed
+        if (!this.browser?.isConnected()) return;
+        // eslint-disable-next-line no-void
+        void this.handlePageClosed(instanceId);
+      });
+      try {
+        await strategy.page.bringToFront();
+      } catch {
+        // 置顶失败不阻断扫码
+      }
+    } catch (e) {
+      // 启动失败：撤掉半成品 strategy，避免 sync 误判「已在跑」
+      await this.removeTask(instanceId, false).catch(() => undefined);
+      throw e;
+    }
     this.log.info(
       `已启动拼多多网页客服实例 #${instanceId}，请在对应 Chrome 窗口扫码登录（一实例一店）`,
     );
@@ -601,6 +687,8 @@ export class WebStrategyService {
   async syncFromInstances(instances: Instance[], shouldRun: boolean) {
     return this.runExclusive(async () => {
       await this.ensureLoop();
+      // 浏览器被杀／页面已关时，先卸 zombie，否则 sync 会跳过重挂
+      await this.pruneDeadStrategies();
 
       // 暂停→恢复：清 closed，允许再次挂浏览器
       if (!this.lastShouldRun && shouldRun) {

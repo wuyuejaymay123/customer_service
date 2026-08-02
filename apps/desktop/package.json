@@ -1,7 +1,7 @@
 {
   "name": "smart-cs",
   "description": "B2B 智能客服桌面客户端",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "keywords": [
     "electron",
     "react",

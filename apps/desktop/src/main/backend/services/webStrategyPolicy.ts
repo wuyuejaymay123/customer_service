@@ -24,6 +24,17 @@ export function shouldAttachPddOnSync(opts: {
 }
 
 /**
+ * 内存里仍挂着 strategy，但浏览器／页面已死：应从列表卸下以便 sync 重挂。
+ * 与「用户关窗→closed」不同：进程崩溃／被杀不写 closed，允许自动重开。
+ */
+export function shouldDropDeadStrategyForResync(opts: {
+  browserConnected: boolean;
+  pageClosed: boolean;
+}): boolean {
+  return !opts.browserConnected || opts.pageClosed;
+}
+
+/**
  * 自动回复从暂停恢复时，清掉 closed，允许再次挂浏览器。
  * 其余情况保留原状态。
  */

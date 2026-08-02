@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   shouldAutoReopenBrowserOnPageClose,
   shouldAttachPddOnSync,
+  shouldDropDeadStrategyForResync,
   loginStatusAfterDriverResume,
   loginStatusOnAttach,
   resolveLoginStatusFromProbe,
@@ -33,6 +34,30 @@ describe('webStrategyPolicy', () => {
     );
     assert.equal(
       shouldAttachPddOnSync({ shouldRun: false, loginStatus: 'closed' }),
+      false,
+    );
+  });
+
+  it('dead browser or closed page drops strategy so sync can reattach', () => {
+    assert.equal(
+      shouldDropDeadStrategyForResync({
+        browserConnected: false,
+        pageClosed: false,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldDropDeadStrategyForResync({
+        browserConnected: true,
+        pageClosed: true,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldDropDeadStrategyForResync({
+        browserConnected: true,
+        pageClosed: false,
+      }),
       false,
     );
   });

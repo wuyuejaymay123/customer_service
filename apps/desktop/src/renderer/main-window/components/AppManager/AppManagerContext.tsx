@@ -223,11 +223,23 @@ export const AppManagerProvider = ({ children }: AppManagerProviderProps) => {
         }
 
         await refetchTasks();
+      } catch (error) {
+        const msg = (error as Error).message || '未知错误';
+        console.error('新增实例失败:', msg);
+        toast({
+          title: '未能打开浏览器',
+          description: msg,
+          status: 'error',
+          position: 'top',
+          duration: 8000,
+          isClosable: true,
+        });
+        await refetchTasks();
       } finally {
         setIsTasksLoading(false);
       }
     }
-  }, [selectedAppId, refetchTasks]);
+  }, [selectedAppId, refetchTasks, toast]);
 
   const contextValue = useMemo(
     () => ({
