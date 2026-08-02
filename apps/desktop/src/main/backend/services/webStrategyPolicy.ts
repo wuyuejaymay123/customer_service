@@ -35,6 +35,17 @@ export function shouldDropDeadStrategyForResync(opts: {
 }
 
 /**
+ * 页面 close 事件后是否应标 closed（用户关窗）。
+ * Edge／Chrome 崩溃时 close 往往早于 disconnected；若此时浏览器已断，
+ * 不得标 closed，否则新增实例会被误判「打不开窗口」。
+ */
+export function shouldMarkClosedOnPageClose(opts: {
+  browserConnected: boolean;
+}): boolean {
+  return opts.browserConnected;
+}
+
+/**
  * 自动回复从暂停恢复时，清掉 closed，允许再次挂浏览器。
  * 其余情况保留原状态。
  */

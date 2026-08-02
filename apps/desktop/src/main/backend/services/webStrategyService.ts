@@ -24,6 +24,7 @@ import {
   shouldAutoReopenBrowserOnPageClose,
   shouldAttachPddOnSync,
   shouldDropDeadStrategyForResync,
+  shouldMarkClosedOnPageClose,
   loginStatusAfterDriverResume,
   loginStatusOnAttach,
   resolveLoginStatusFromProbe,
@@ -214,11 +215,7 @@ export class WebStrategyService {
         pageClosed = true;
       }
       if (pageClosed) {
-        if (this.browser?.isConnected()) {
-          await this.handlePageClosed(strategy.instance_id);
-        } else {
-          await this.removeTask(strategy.instance_id, false);
-        }
+        await this.handlePageClosed(strategy.instance_id);
         return;
       }
       const meta = await strategy.probeShopMeta();
@@ -308,11 +305,30 @@ export class WebStrategyService {
     }
   }
 
-  /** 页面／浏览器关闭：卸下策略并标记 closed，不自动重开 */
+  /**
+   * 页面 close：延迟判定，避免崩溃时 close 早于 disconnected 被误标 closed。
+   */
+  private schedulePageClosedCheck(instanceId: number) {
+    setTimeout(() => {
+      // eslint-disable-next-line no-void
+      void this.handlePageClosed(instanceId);
+    }, 400);
+  }
+
+  /** 页面／浏览器关闭：卸下策略；仅在浏览器仍连通时标 closed（用户关窗） */
   private async handlePageClosed(instanceId: number) {
     if (this.removingIds.has(instanceId)) {
       return;
     }
+    const browserConnected = Boolean(this.browser?.isConnected());
+    if (!shouldMarkClosedOnPageClose({ browserConnected })) {
+      this.log.warn(
+        `拼多多实例 #${instanceId} 页面关闭且浏览器已断开（疑似崩溃），不标 closed，等待重开`,
+      );
+      await this.removeTask(instanceId, false);
+      return;
+    }
+
     const inst = await Instance.findByPk(instanceId);
     if (!inst || inst.app_id !== 'pinduoduo') {
       await this.removeTask(instanceId, false);
@@ -391,14 +407,10 @@ export class WebStrategyService {
         // eslint-disable-next-line no-continue
         continue;
       }
-      if (browserConnected && pageClosed) {
-        // eslint-disable-next-line no-await-in-loop
-        await this.handlePageClosed(strategy.instance_id);
-        // eslint-disable-next-line no-continue
-        continue;
-      }
+      // 此处只卸 zombie 以便重挂；是否标 closed 由 schedulePageClosedCheck 判定
+      // （避免崩溃瞬间 isConnected 仍为 true 被误标 closed）
       this.log.warn(
-        `拼多多实例 #${strategy.instance_id} 浏览器已断开，准备重新打开窗口`,
+        `拼多多实例 #${strategy.instance_id} 浏览器／页面不可用，准备重新打开窗口`,
       );
       // eslint-disable-next-line no-await-in-loop
       await this.removeTask(strategy.instance_id, false);
@@ -576,10 +588,7 @@ export class WebStrategyService {
     try {
       await strategy.start();
       strategy.page.on('close', () => {
-        // 进程崩溃时由 disconnected／prune 处理，避免误标 closed
-        if (!this.browser?.isConnected()) return;
-        // eslint-disable-next-line no-void
-        void this.handlePageClosed(instanceId);
+        this.schedulePageClosedCheck(instanceId);
       });
       try {
         await strategy.page.bringToFront();
@@ -766,30 +775,62 @@ export class WebStrategyService {
         }
       }
 
-      for (const inst of pddInstances) {
-        if (
-          !shouldAttachPddOnSync({
+      // 新实例优先挂浏览器，避免旧 zombie 失败拖死「新增」
+      const toAttach = [...pddInstances]
+        .filter((i) =>
+          shouldAttachPddOnSync({
             shouldRun,
-            loginStatus: inst.login_status,
-          })
-        ) {
+            loginStatus: i.login_status,
+          }),
+        )
+        .sort((a, b) => b.id - a.id);
+
+      for (const inst of toAttach) {
+        if (runningIds().includes(inst.id)) {
           // eslint-disable-next-line no-continue
           continue;
         }
-        if (!runningIds().includes(inst.id)) {
-          try {
-            // eslint-disable-next-line no-await-in-loop
-            await this.addTask(inst.app_id, inst.id);
-          } catch (e) {
-            this.log.error(
-              `无法打开拼多多 Chrome（实例 #${inst.id}）：${
-                e instanceof Error ? e.message : String(e)
-              }`,
-            );
-            throw e;
-          }
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await this.addTask(inst.app_id, inst.id);
+        } catch (e) {
+          this.log.error(
+            `无法打开拼多多 Chrome（实例 #${inst.id}）：${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+          // 单个失败不阻断其余实例（尤其是刚新增的）
         }
       }
+    });
+  }
+
+  /** 确保指定拼多多实例已挂上浏览器（供新增后定向重试） */
+  async ensureInstanceBrowser(instanceId: number): Promise<void> {
+    return this.runExclusive(async () => {
+      await this.ensureLoop();
+      await this.pruneDeadStrategies();
+      const inst = await Instance.findByPk(instanceId);
+      if (!inst || inst.app_id !== 'pinduoduo') {
+        throw new Error('实例不存在');
+      }
+      if (inst.login_status === 'closed') {
+        inst.login_status = 'pending';
+        await inst.save();
+      }
+      if (this.strategies.some((s) => s.instance_id === instanceId)) {
+        const strategy = this.strategies.find((s) => s.instance_id === instanceId);
+        if (strategy?.page && !strategy.page.isClosed()) {
+          try {
+            await strategy.page.bringToFront();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        await this.removeTask(instanceId, false);
+      }
+      await this.addTask('pinduoduo', instanceId);
     });
   }
 }

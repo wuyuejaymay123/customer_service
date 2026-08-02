@@ -130,6 +130,19 @@ export class DispatchService {
     return run;
   }
 
+  /** 新增拼多多实例后：定向挂浏览器（不依赖整表 sync 全成功） */
+  public async ensurePinduoduoBrowser(instanceId: number): Promise<void> {
+    const run = this.syncChain.then(
+      () => this.webStrategy.ensureInstanceBrowser(instanceId),
+      () => this.webStrategy.ensureInstanceBrowser(instanceId),
+    );
+    this.syncChain = run.then(
+      () => true,
+      () => false,
+    );
+    return run;
+  }
+
   private async syncQianniuRpa(
     instances: Instance[],
     shouldRun: boolean,

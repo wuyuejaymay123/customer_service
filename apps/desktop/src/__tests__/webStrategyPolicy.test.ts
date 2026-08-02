@@ -4,6 +4,7 @@ import {
   shouldAutoReopenBrowserOnPageClose,
   shouldAttachPddOnSync,
   shouldDropDeadStrategyForResync,
+  shouldMarkClosedOnPageClose,
   loginStatusAfterDriverResume,
   loginStatusOnAttach,
   resolveLoginStatusFromProbe,
@@ -60,6 +61,11 @@ describe('webStrategyPolicy', () => {
       }),
       false,
     );
+  });
+
+  it('page close during browser crash must not mark closed', () => {
+    assert.equal(shouldMarkClosedOnPageClose({ browserConnected: false }), false);
+    assert.equal(shouldMarkClosedOnPageClose({ browserConnected: true }), true);
   });
 
   it('resuming auto-reply clears closed so browser can attach again', () => {

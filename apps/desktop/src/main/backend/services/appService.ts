@@ -169,28 +169,36 @@ export class AppService {
           await this.dispatchService.syncConfig();
         } catch (e) {
           console.warn('sync after addTask failed:', e);
-          if (appId === 'pinduoduo') {
-            throw new Error(
-              `实例已创建，但未能打开浏览器：${
-                e instanceof Error ? e.message : String(e)
-              }`,
-            );
-          }
         }
-        if (appId === 'pinduoduo') {
-          const fresh = await Instance.findByPk(instance.id);
-          if (
-            !fresh ||
-            fresh.login_status === 'unknown' ||
-            fresh.login_status === 'closed'
-          ) {
-            throw new Error(
-              '实例已创建，但未能打开拼多多登录窗口。请确认已安装 Edge／Chrome，或在设置中填写浏览器路径后重试「新增」。',
-            );
-          }
+        if (appId !== 'pinduoduo') {
+          return instance;
+        }
+
+        const isReady = (status: string | null | undefined) =>
+          status === 'pending' || status === 'logged_in';
+
+        let fresh = await Instance.findByPk(instance.id);
+        if (fresh && isReady(fresh.login_status)) {
           return fresh;
         }
-        return instance;
+
+        // 定向再挂一次：避开「旧实例失败／崩溃误标 closed」导致新增误报
+        try {
+          await this.dispatchService.ensurePinduoduoBrowser(instance.id);
+        } catch (e) {
+          throw new Error(
+            `实例已创建，但未能打开浏览器：${
+              e instanceof Error ? e.message : String(e)
+            }。请确认已安装 Edge／Chrome，或在设置中填写浏览器路径后重试。`,
+          );
+        }
+        fresh = await Instance.findByPk(instance.id);
+        if (!fresh || !isReady(fresh.login_status)) {
+          throw new Error(
+            '实例已创建，但未能打开拼多多登录窗口。请确认已安装 Edge／Chrome，或在设置中填写浏览器路径后重试「新增」。',
+          );
+        }
+        return fresh;
       })
       .catch((error) => {
         // 处理错误
