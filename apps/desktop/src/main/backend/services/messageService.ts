@@ -230,10 +230,6 @@ export class MessageService {
       return { type: 'TRANSFER' as MessageType, content: comfort };
     }
 
-    if (timedOut) {
-      return { type: 'NO_REPLY' as MessageType, content: '' };
-    }
-
     // 人工感延迟放在生成成功之后，不计入 ReplyTimeout
     const min = cfg.reply_speed;
     const max = cfg.reply_random_speed + cfg.reply_speed;
