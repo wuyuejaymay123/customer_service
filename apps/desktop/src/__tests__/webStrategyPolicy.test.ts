@@ -15,6 +15,11 @@ import {
   shopCardStatus,
 } from '../main/backend/services/webStrategyPolicy';
 
+import {
+  getChromiumExecutableCandidates,
+  envForPlaywrightLaunch,
+} from '../main/utils/playwright';
+
 describe('webStrategyPolicy', () => {
   it('closing pdd browser does not auto-reopen', () => {
     assert.equal(shouldAutoReopenBrowserOnPageClose(), false);
@@ -198,5 +203,31 @@ describe('webStrategyPolicy', () => {
     });
     assert.equal(halted.connection.label, '已关闭');
     assert.equal(halted.autoReply.label, '已停用');
+  });
+});
+
+describe('playwright browser candidates', () => {
+  it('prefers Chrome over Edge when both exist', async () => {
+    const list = await getChromiumExecutableCandidates();
+    const chromeIdx = list.findIndex((p) => /chrome\.exe$/i.test(p));
+    const edgeIdx = list.findIndex((p) => /msedge\.exe$/i.test(p));
+    if (chromeIdx >= 0 && edgeIdx >= 0) {
+      assert.ok(chromeIdx < edgeIdx, `Chrome should rank before Edge: ${list}`);
+    }
+  });
+
+  it('strips Electron env vars before launching external browser', () => {
+    const cleaned = envForPlaywrightLaunch({
+      PATH: 'x',
+      ELECTRON_RUN_AS_NODE: '1',
+      ELECTRON_NO_ASAR: '1',
+      ELECTRON_NO_ATTACH_CONSOLE: '1',
+      FOO: 'bar',
+    });
+    assert.equal(cleaned.PATH, 'x');
+    assert.equal(cleaned.FOO, 'bar');
+    assert.equal(cleaned.ELECTRON_RUN_AS_NODE, undefined);
+    assert.equal(cleaned.ELECTRON_NO_ASAR, undefined);
+    assert.equal(cleaned.ELECTRON_NO_ATTACH_CONSOLE, undefined);
   });
 });

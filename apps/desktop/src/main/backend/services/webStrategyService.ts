@@ -1,7 +1,10 @@
 import os from 'os';
 import path from 'path';
 import { chromium, Browser, BrowserContext } from 'playwright';
-import { getChromePath } from '../../utils/playwright';
+import {
+  getChromiumExecutableCandidates,
+  envForPlaywrightLaunch,
+} from '../../utils/playwright';
 import { Pinduoduo } from '../../platforms/pinduoduo';
 import G_V from '../../platforms/globalState';
 import { Instance } from '../entities/instance';
@@ -353,7 +356,7 @@ export class WebStrategyService {
     await this.removeTask(instanceId, false);
   }
 
-  private async getChromeExecutable(): Promise<string> {
+  private async resolveBrowserCandidates(): Promise<string[]> {
     const generic = await this.configController.getConfigByType({
       type: 'generic',
       appId: undefined,
@@ -363,15 +366,60 @@ export class WebStrategyService {
       generic && 'chromePath' in generic
         ? String((generic as { chromePath?: string }).chromePath || '').trim()
         : '';
-    if (fromCfg) return fromCfg;
-    const found = await getChromePath();
-    if (!found) {
+    if (fromCfg) return [fromCfg];
+    const found = await getChromiumExecutableCandidates();
+    if (found.length === 0) {
       throw new Error(
-        '找不到可用的 Chromium 内核浏览器（系统默认需为 Edge／Chrome／Brave 等）。请安装 Microsoft Edge 或 Google Chrome，或在设置中填写浏览器路径。',
+        '找不到可用的 Chromium 内核浏览器。请安装 Google Chrome 或 Microsoft Edge，或在设置中填写浏览器路径。',
       );
     }
-    this.log.info(`使用浏览器：${found}`);
     return found;
+  }
+
+  /** Electron 下启动外部浏览器：清环境变量，Chrome 优先，失败换下一个 */
+  private async launchBrowser(): Promise<Browser> {
+    const candidates = await this.resolveBrowserCandidates();
+    const env = envForPlaywrightLaunch();
+    const args = [
+      '--no-sandbox',
+      '--ignore-certificate-errors',
+      '--start-maximized',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-infobars',
+      '--disable-gpu-sandbox',
+    ];
+    let lastError: unknown;
+    for (const executablePath of candidates) {
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          const browser = await chromium.launch({
+            executablePath,
+            headless: false,
+            env,
+            args,
+          });
+          if (!browser.isConnected()) {
+            await browser.close().catch(() => undefined);
+            throw new Error('浏览器进程启动后立即断开');
+          }
+          this.log.info(`使用浏览器：${executablePath}`);
+          this.bindBrowserDisconnect(browser);
+          return browser;
+        } catch (e) {
+          lastError = e;
+          this.log.warn(
+            `启动浏览器失败（${executablePath}，第 ${attempt}/2 次）：${
+              e instanceof Error ? e.message : String(e)
+            }`.slice(0, 300),
+          );
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(String(lastError || '无法启动浏览器'));
   }
 
   private async evictStaleContexts() {
@@ -445,20 +493,8 @@ export class WebStrategyService {
       return existing;
     }
 
-    const chromePath = await this.getChromeExecutable();
     if (!this.browser || !this.browser.isConnected()) {
-      this.browser = await chromium.launch({
-        executablePath: chromePath,
-        headless: false,
-        args: [
-          '--no-sandbox',
-          '--ignore-certificate-errors',
-          '--start-maximized',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-infobars',
-        ],
-      });
-      this.bindBrowserDisconnect(this.browser);
+      this.browser = await this.launchBrowser();
     }
 
     // 每个实例独立 context，绝不与其他实例共用 cookie

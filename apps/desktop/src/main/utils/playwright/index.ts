@@ -131,28 +131,27 @@ function isChromiumProgId(progId: string): boolean {
 }
 
 /**
- * 按系统默认浏览器优先，解析可用于 Playwright 的 Chromium 内核浏览器路径。
- * 顺序：手动常见路径里的「系统默认」→ Edge → Chrome → Brave → where 查找
- *
- * Firefox / IE 等非 Chromium 内核不能用于当前拼多多自动化，会自动跳过并回落。
+ * 可供 Playwright 启动的 Chromium 内核浏览器路径（去重、按优先级）。
+ * 优先 Chrome：Electron 提权主进程下 Edge 常出现 launch 后立刻退出。
  */
-export async function getChromePath(): Promise<string | null> {
+export async function getChromiumExecutableCandidates(): Promise<string[]> {
+  const list: string[] = [];
+  const add = (p: string | null | undefined) => {
+    if (p && fileExistsSync(p) && !list.includes(p)) list.push(p);
+  };
+
+  for (const p of chromeCandidates()) add(p);
+  for (const p of edgeCandidates()) add(p);
+  for (const p of braveCandidates()) add(p);
+
   if (process.platform === 'win32') {
     const progId = getDefaultHttpProgId();
     if (progId && isChromiumProgId(progId)) {
-      const fromDefault = resolveProgIdExe(progId);
-      if (fromDefault) return fromDefault;
+      add(resolveProgIdExe(progId));
     }
   }
 
-  const fallback = firstExisting([
-    ...edgeCandidates(),
-    ...chromeCandidates(),
-    ...braveCandidates(),
-  ]);
-  if (fallback) return fallback;
-
-  for (const bin of ['msedge', 'chrome', 'brave']) {
+  for (const bin of ['chrome', 'msedge', 'brave']) {
     try {
       const result = execSync(`where ${bin}`, {
         encoding: 'utf8',
@@ -161,13 +160,33 @@ export async function getChromePath(): Promise<string | null> {
       })
         .trim()
         .split(/\r?\n/)[0];
-      if (result && fileExistsSync(result)) return result;
+      add(result);
     } catch {
       // ignore
     }
   }
 
-  return null;
+  return list;
+}
+
+/**
+ * 解析单个首选路径（兼容旧调用）。
+ * 顺序：Chrome → Edge → Brave → 系统默认 → where
+ */
+export async function getChromePath(): Promise<string | null> {
+  const all = await getChromiumExecutableCandidates();
+  return all[0] || null;
+}
+
+/** 从 Electron 主进程启动外部浏览器时剔除会污染子进程的环境变量 */
+export function envForPlaywrightLaunch(
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env = { ...base };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.ELECTRON_NO_ASAR;
+  delete env.ELECTRON_NO_ATTACH_CONSOLE;
+  return env;
 }
 
 export function matcheTargetUrl(targetUrl: string, currentUrl: string): boolean {
