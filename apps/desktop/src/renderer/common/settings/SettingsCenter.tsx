@@ -1,6 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Heading, useToast } from '@chakra-ui/react';
-import GeneralSettings from '../../settings-window/components/Settings/GeneralSettings';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Box, Button, Flex, Heading, useToast } from '@chakra-ui/react';
+import GeneralSettings, {
+  GeneralSettingsHandle,
+} from '../../settings-window/components/Settings/GeneralSettings';
 import AccountSettings, {
   AccountPanel,
 } from '../../settings-window/components/Settings/AccountSettings';
@@ -58,7 +66,7 @@ const sectionTitle: Record<SettingsSection, string> = {
   'points-bal': '积分余额',
   'points-rech': '充值明细',
   'points-usage': '用量明细',
-  account: '登录与改密',
+  account: '修改密码',
   about: '关于',
   'kw-match': '关键词匹配',
   'kw-replace': '关键词替换',
@@ -143,6 +151,7 @@ const SettingsCenter = ({
 
   const view = normalizeSettingsSection(section);
   const kwTab = useMemo(() => keywordTab(view), [view]);
+  const generalRef = useRef<GeneralSettingsHandle>(null);
 
   if (kwTab != null) {
     return (
@@ -164,20 +173,52 @@ const SettingsCenter = ({
     );
   }
 
+  if (view === 'voice') {
+    return (
+      <Box className="cs-page">
+        <Flex
+          justify="space-between"
+          align="center"
+          mb={4}
+          position="sticky"
+          top={0}
+          zIndex={5}
+          bg="white"
+          py={2}
+          borderBottomWidth="1px"
+          borderColor="gray.100"
+        >
+          <Heading as="h3" size="md">
+            规则
+          </Heading>
+          <Button
+            colorScheme="teal"
+            size="md"
+            px={8}
+            fontWeight="bold"
+            onClick={() => generalRef.current?.save()}
+          >
+            保存
+          </Button>
+        </Flex>
+
+        <AccountSettings panel={accountPanelFor(section)} />
+
+        <Box mt={6}>
+          <GeneralSettings ref={generalRef} style={{ width: '100%' }} />
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box className="cs-page">
       <Heading as="h3" size="md" mb={4}>
         {sectionTitle[section]}
       </Heading>
 
-      {(view === 'voice' || view === 'account' || view === 'points') && (
+      {(view === 'account' || view === 'points') && (
         <AccountSettings panel={accountPanelFor(section)} />
-      )}
-
-      {view === 'voice' && (
-        <Box mt={6}>
-          <GeneralSettings style={{ width: '100%' }} />
-        </Box>
       )}
 
       {view === 'about' && <AboutPage />}

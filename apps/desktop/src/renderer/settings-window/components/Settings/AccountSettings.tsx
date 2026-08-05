@@ -73,7 +73,7 @@ const AccountSettings = ({ panel = 'all' }: { panel?: AccountPanel }) => {
   const showUsage =
     panel === 'all' || panel === 'points' || panel === 'points-usage';
   const showPointsBlock = showBalance || showRecharges || showUsage;
-  // 登录与改密页不再展示客服账号管理／会话信息盒（改由顶栏退出）
+  // 修改密码页不再展示客服账号管理／会话信息盒（改由顶栏退出）
   const showOperators = panel === 'all';
   const showSessionBox = panel === 'all';
 

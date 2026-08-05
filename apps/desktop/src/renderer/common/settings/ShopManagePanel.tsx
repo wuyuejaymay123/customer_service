@@ -146,7 +146,7 @@ const ShopManagePanel = ({
   const current = shops.find((s) => String(s.task_id) === String(instanceId));
 
   return (
-    <Flex className="cs-shop-manage" h="100%" minH="520px">
+    <Flex className="cs-shop-manage" h="100%" minH={0} align="stretch">
       <aside className="cs-shop-manage-side">
         <div className="cs-shop-manage-side-h">店铺列表</div>
         <div className="cs-shop-manage-list">

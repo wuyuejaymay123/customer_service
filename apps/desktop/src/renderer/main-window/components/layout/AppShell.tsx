@@ -57,7 +57,7 @@ const SECTION_LABEL: Record<SettingsSection, string> = {
   'points-bal': '积分余额',
   'points-rech': '充值明细',
   'points-usage': '用量明细',
-  account: '登录与改密',
+  account: '修改密码',
   about: '关于',
   'kw-match': '关键词匹配',
   'kw-replace': '关键词替换',
@@ -264,16 +264,6 @@ const AppShell = ({ onLogout }: Props) => {
             </div>
             {menuOpen && (
               <div className="cs-me-menu">
-                <button
-                  type="button"
-                  className="cs-me-menu-item"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    goSection('account');
-                  }}
-                >
-                  登录与改密
-                </button>
                 <button
                   type="button"
                   className="cs-me-menu-item danger"

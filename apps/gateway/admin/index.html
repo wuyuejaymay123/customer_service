@@ -520,12 +520,30 @@
         '（' +
         rate +
         '）。可与 DeepSeek 控制台账单人工对账。';
+      const formatUsageTime = (iso) => {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return iso || '';
+        const pad = (n) => String(n).padStart(2, '0');
+        return (
+          d.getFullYear() +
+          '-' +
+          pad(d.getMonth() + 1) +
+          '-' +
+          pad(d.getDate()) +
+          ' ' +
+          pad(d.getHours()) +
+          ':' +
+          pad(d.getMinutes()) +
+          ':' +
+          pad(d.getSeconds())
+        );
+      };
       usageList.innerHTML =
-        '<table><tr><th>时间</th><th>模型</th><th>prompt</th><th>completion</th><th>扣点数</th><th>上游成本¥</th><th>是否成功</th><th>用量来源</th></tr>' +
+        '<table><tr><th>时间</th><th>模型</th><th>prompt</th><th>completion</th><th>商户扣点数</th><th>上游成本¥</th><th>是否成功</th><th>用量来源</th></tr>' +
         j.data
           .map(
             (u) => `<tr>
-          <td>${escapeHtml(u.created_at || '')}</td><td>${escapeHtml(u.model || '')}</td>
+          <td>${escapeHtml(formatUsageTime(u.created_at))}</td><td>${escapeHtml(u.model || '')}</td>
           <td>${escapeHtml(String(u.prompt_tokens ?? 0))}</td>
           <td>${escapeHtml(String(u.completion_tokens ?? 0))}</td>
           <td>${escapeHtml(String(u.credit_charged ?? ''))}</td>

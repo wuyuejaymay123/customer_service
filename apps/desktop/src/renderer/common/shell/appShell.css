@@ -471,6 +471,7 @@
 /* 单店管理：左列表 + 右资料 */
 .cs-shop-manage {
   display: flex;
+  height: 100%;
   min-height: 0;
   background: #fff;
   border-top: 1px solid var(--cs-line);
@@ -485,6 +486,7 @@
   min-height: 0;
   height: 100%;
   max-height: 100%;
+  align-self: stretch;
 }
 
 .cs-shop-manage-side-h {
@@ -504,9 +506,13 @@
 
 .cs-shop-manage-add {
   flex-shrink: 0;
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
   padding: 12px;
   border-top: 1px solid var(--cs-line);
   background: #f7f9fc;
+  box-shadow: 0 -4px 12px rgba(15, 24, 48, 0.06);
 }
 
 .cs-shop-manage-item {

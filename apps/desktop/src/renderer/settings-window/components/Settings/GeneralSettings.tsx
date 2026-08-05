@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { FiHelpCircle, FiFolder } from 'react-icons/fi';
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from 'react';
+import { FiHelpCircle } from 'react-icons/fi';
 import {
   Box,
-  Button,
   Icon,
-  Checkbox,
   Flex,
   FormControl,
   FormLabel,
@@ -18,7 +21,6 @@ import {
   RangeSliderTrack,
   RangeSliderFilledTrack,
   RangeSliderThumb,
-  Divider,
   Text,
   Tooltip,
   useToast,
@@ -32,15 +34,18 @@ import {
 } from '../../../common/services/platform/controller';
 import { GenericConfig } from '../../../common/services/platform/platform.d';
 
-const GeneralSettings = ({
-  appId,
-  instanceId,
-  style,
-}: {
-  appId?: string;
-  instanceId?: string;
-  style?: React.CSSProperties;
-}) => {
+export type GeneralSettingsHandle = {
+  save: () => Promise<void>;
+};
+
+const GeneralSettings = forwardRef<
+  GeneralSettingsHandle,
+  {
+    appId?: string;
+    instanceId?: string;
+    style?: React.CSSProperties;
+  }
+>(({ appId, instanceId, style }, ref) => {
   const toast = useToast();
 
   const { data, isLoading } = useQuery(
@@ -112,34 +117,6 @@ const GeneralSettings = ({
     return `${config.replySpeed.toFixed(2)} 秒 ~ ${(config.replySpeed + config.replyRandomSpeed).toFixed(2)} 秒`;
   };
 
-  const selectFolderPath = () => {
-    window.electron.ipcRenderer.sendMessage('select-directory');
-    window.electron.ipcRenderer.once('selected-directory', (path) => {
-      const selectedPath = path as string[];
-      handleUpdateConfig({ savePath: selectedPath[0] });
-    });
-  };
-
-  const openSelectedFolder = () => {
-    if (!config) return;
-
-    if (config.savePath) {
-      window.electron.ipcRenderer.sendMessage(
-        'open-directory',
-        config.savePath,
-      );
-    } else {
-      toast({
-        position: 'top',
-        title: '未选择文件夹',
-        description: '请先选择一个文件夹路径。',
-        status: 'warning',
-        duration: 5000,
-        isClosable: true,
-      });
-    }
-  };
-
   const handleSave = async () => {
     if (!config) return;
     try {
@@ -169,6 +146,12 @@ const GeneralSettings = ({
     }
   };
 
+  useImperativeHandle(ref, () => ({ save: handleSave }), [
+    config,
+    appId,
+    instanceId,
+  ]);
+
   if (isLoading || !data || !config) {
     return (
       <Stack>
@@ -181,44 +164,6 @@ const GeneralSettings = ({
 
   return (
     <VStack spacing="4" align="start" style={style}>
-      <Button colorScheme="teal" alignSelf="flex-end" onClick={handleSave}>
-        保存
-      </Button>
-      <Checkbox
-        mr={4}
-        isChecked={config.extractProduct}
-        onChange={(e) =>
-          handleUpdateConfig({ extractProduct: e.target.checked })
-        }
-      >
-        提取咨询商品名
-      </Checkbox>
-
-      <FormControl mt={3}>
-        <FormLabel>提取内容存储路径</FormLabel>
-        <Flex>
-          <Input
-            isReadOnly
-            value={config.savePath}
-            placeholder="选择文件夹路径"
-          />
-          <Button ml={2} onClick={selectFolderPath}>
-            选择
-          </Button>
-        </Flex>
-      </FormControl>
-
-      <Button
-        leftIcon={<FiFolder />}
-        my={3}
-        w={'100%'}
-        onClick={openSelectedFolder}
-      >
-        打开本地文件夹
-      </Button>
-
-      <Divider />
-
       <Tooltip label="回复等待时间，当设置了随机时间则，等待时间为 “固定等待时间” + “随机等待时间”">
         <Text mb="8px">回复等待时间（单位秒）: {` ${getReplySpeedStr()}`}</Text>
       </Tooltip>
@@ -377,6 +322,8 @@ const GeneralSettings = ({
       </FormControl>
     </VStack>
   );
-};
+});
+
+GeneralSettings.displayName = 'GeneralSettings';
 
 export default GeneralSettings;
