@@ -8,6 +8,7 @@
 |------|------|------|
 | `DATABASE_URL` | 是 | 例：`postgres://USER:PASS@HOST:5432/cs_billing` |
 | `JWT_SECRET` | **是（生产）** | 强随机字符串（≥32 字节）。未设置时进程会警告并使用开发默认密钥，**不可上线** |
+| `DEEPSEEK_API_KEY` | **是（生产／要智能回复时）** | 上游 API Key，**只放服务器环境变量**，禁止写入数据库或提交 Git。缺失时智能回复硬失败且不预扣 |
 | `PORT` | 否 | 默认 `8787` |
 | `SEED_ADMIN_USER` / `SEED_ADMIN_PASS` | 否 | 仅首次 `npm run seed` 时创建运营管理员 |
 
@@ -31,6 +32,7 @@ npm run seed                  # 仅创建运营管理员；不再自动建演示
 ```powershell
 $env:JWT_SECRET = "你的强密钥"
 $env:DATABASE_URL = "postgres://..."
+$env:DEEPSEEK_API_KEY = "sk-..."   # 勿提交；换 key 后需重启进程
 npm run start                 # 生产用 start；开发可用 npm run dev
 ```
 
@@ -44,12 +46,13 @@ npm run start                 # 生产用 start；开发可用 npm run dev
 ## 4. 上线后必做
 
 1. 用强密码登录运营后台，**立刻修改** seed 的 `admin` 密码（当前可通过「重置商户管理员密码」同类流程自行在库中改，或后续用改密接口）
-2. 配置并启用「智能回复模型」（含真实 API Key）
+2. 在服务器 `.env`／systemd 配置 `DEEPSEEK_API_KEY`（DeepSeek 控制台新建／轮换后的 key），运营后台只配接口地址与模型名并启用
 3. 开通真实商户并充值，**不要**依赖演示账号
-4. 定期备份 Postgres 卷／库
+4. 定期备份 Postgres 卷／库；确认 `model_skus.api_key` 为空（migrate 会清空旧明文）
 
 ## 5. 安全注意
 
 - 本机桌面端登录后只缓存 JWT，**不再落盘明文密码**
-- 勿把含 `JWT_SECRET`／API Key 的 `.env` 提交到 git
+- 勿把含 `JWT_SECRET`／`DEEPSEEK_API_KEY` 的 `.env` 提交到 git
+- 上游 Key 曾入过库或聊天记录时，应在 DeepSeek 控制台作废并轮换
 - 运营后台仅内网或 VPN 可达更佳

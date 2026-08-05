@@ -89,11 +89,11 @@
 
       <section>
         <h2>智能回复模型</h2>
-        <p class="hint">只配置上游接口与密钥。客服行为规则请改上方「平台硬规则」；商户口吻在桌面端「网关账户」维护。</p>
+        <p class="hint">只配置接口地址与模型名。API Key 写在服务器环境变量 <code>DEEPSEEK_API_KEY</code>（勿入库）。客服行为规则改上方「平台硬规则」。</p>
         <label>显示名称 <input id="mName" value="deepseek" placeholder="方便自己辨认，例如：deepseek" /></label>
         <label>接口地址 <input id="mBase" value="https://api.deepseek.com/v1" placeholder="服务商提供的接口地址" /></label>
-        <label>接口密钥 <input id="mKey" type="password" placeholder="填入服务商提供的密钥" /></label>
         <label>模型名称 <input id="mModel" value="deepseek-v4-flash" placeholder="例如 deepseek-v4-flash" /></label>
+        <p id="skuKeyHint" class="hint">密钥：从服务器环境变量读取</p>
         <button id="btnSaveSku">保存并启用</button>
         <button class="secondary" id="btnLoadSku" type="button">加载现有配置</button>
         <p id="skuMsg"></p>
@@ -411,23 +411,22 @@
     async function loadSku() {
       const j = await api('/admin/model-skus');
       const active = (j.data || []).find((s) => s.active) || j.data?.[0];
+      const keyHint = document.getElementById('skuKeyHint');
       if (!active) {
         skuHint.textContent = '尚未配置智能回复模型，请先填写并保存。';
+        keyHint.textContent = j.data?.[0]?.hasApiKey
+          ? '密钥：环境变量已配置 ' + (j.data[0].apiKeyMasked || '****')
+          : '密钥：未检测到 DEEPSEEK_API_KEY，智能回复将不可用';
         return;
       }
       mName.value = active.name || '';
       mBase.value = active.baseUrl || '';
       mModel.value = active.model || '';
-      mKey.value = '';
-      mKey.placeholder = active.hasApiKey
-        ? '已配置 ' + (active.apiKeyMasked || '****') + '（留空＝不修改）'
-        : '填入接口密钥';
+      keyHint.textContent = active.hasApiKey
+        ? '密钥：环境变量已配置 ' + (active.apiKeyMasked || '****')
+        : '密钥：未检测到 DEEPSEEK_API_KEY，请在服务器 .env 设置后重启闸道';
       skuHint.textContent =
-        '当前启用：' +
-        active.name +
-        ' ／ ' +
-        active.model +
-        (active.hasApiKey ? '（密钥 ' + active.apiKeyMasked + '）' : '');
+        '当前启用：' + active.name + ' ／ ' + active.model;
     }
 
     document.getElementById('btnLoadHardRules').onclick = () =>
@@ -474,14 +473,12 @@
           body: JSON.stringify({
             name: mName.value,
             baseUrl: mBase.value,
-            apiKey: mKey.value,
             model: mModel.value,
             platformPrompt: '',
           }),
         });
         skuMsg.className = 'ok';
         skuMsg.textContent = '已保存并启用';
-        mKey.value = '';
         await loadSku();
       } catch (e) {
         skuMsg.className = 'err';

@@ -50,6 +50,13 @@ async function main() {
   await pool.query(billingSafetySql);
   console.log('migrate: schema-billing-safety.sql applied');
 
+  const upstreamKeySql = fs.readFileSync(
+    path.join(__dirname, 'schema-upstream-api-key.sql'),
+    'utf8',
+  );
+  await pool.query(upstreamKeySql);
+  console.log('migrate: schema-upstream-api-key.sql applied (cleared DB api keys)');
+
   await ensureHardRulesSeeded();
   console.log('migrate: platform hard rules seeded if empty');
 

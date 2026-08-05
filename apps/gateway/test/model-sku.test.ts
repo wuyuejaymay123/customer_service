@@ -20,7 +20,7 @@ async function adminToken() {
 }
 
 describe('ModelSKU admin API', () => {
-  it('lists configured ModelSKU with masked apiKey after save', async () => {
+  it('saves ModelSKU without persisting apiKey to DB', async () => {
     const token = await adminToken();
     const name = `sku_${Date.now()}`;
     const save = await fetch(`${BASE}/admin/model-skus`, {
@@ -32,7 +32,7 @@ describe('ModelSKU admin API', () => {
       body: JSON.stringify({
         name,
         baseUrl: 'https://api.deepseek.com/v1',
-        apiKey: 'sk-secret-key-123456',
+        apiKey: 'sk-should-not-be-stored',
         model: 'deepseek-chat',
         platformPrompt: 'test prompt',
       }),
@@ -47,7 +47,7 @@ describe('ModelSKU admin API', () => {
       success: boolean;
       data: Array<{
         name: string;
-        apiKeyMasked: string;
+        apiKeySource?: string;
         apiKey?: string;
         model: string;
       }>;
@@ -55,11 +55,17 @@ describe('ModelSKU admin API', () => {
     const row = json.data.find((s) => s.name === name);
     assert.ok(row);
     assert.equal(row!.model, 'deepseek-chat');
-    assert.ok(row!.apiKeyMasked.includes('3456') || row!.apiKeyMasked.includes('****'));
+    assert.equal(row!.apiKeySource, 'env');
     assert.equal(row!.apiKey, undefined);
+
+    const db = await query<{ api_key: string }>(
+      `SELECT api_key FROM model_skus WHERE name = $1`,
+      [name],
+    );
+    assert.equal(db.rows[0].api_key, '');
   });
 
-  it('keeps existing apiKey when PlatformAdmin saves with empty key', async () => {
+  it('keeps DB api_key empty on re-save', async () => {
     const token = await adminToken();
     const name = `sku_keep_${Date.now()}`;
     await fetch(`${BASE}/admin/model-skus`, {
@@ -71,12 +77,11 @@ describe('ModelSKU admin API', () => {
       body: JSON.stringify({
         name,
         baseUrl: 'https://api.deepseek.com/v1',
-        apiKey: 'sk-keep-me-abcdef',
         model: 'deepseek-chat',
       }),
     });
 
-    const empty = await fetch(`${BASE}/admin/model-skus`, {
+    const again = await fetch(`${BASE}/admin/model-skus`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -85,16 +90,15 @@ describe('ModelSKU admin API', () => {
       body: JSON.stringify({
         name,
         baseUrl: 'https://api.deepseek.com/v1',
-        apiKey: '',
         model: 'deepseek-chat',
       }),
     });
-    assert.equal(empty.status, 200);
+    assert.equal(again.status, 200);
 
     const db = await query<{ api_key: string }>(
       `SELECT api_key FROM model_skus WHERE name = $1`,
       [name],
     );
-    assert.equal(db.rows[0].api_key, 'sk-keep-me-abcdef');
+    assert.equal(db.rows[0].api_key, '');
   });
 });

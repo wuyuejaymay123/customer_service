@@ -79,8 +79,12 @@ _Avoid_: 合同價（過寬）
 _Avoid_: 代理, proxy（技術口語可）
 
 **ModelSKU**：
-PlatformAdmin 配置的可路由上游模型（OpenAI 兼容端點）。客服路徑只走運營配置的**單一便宜檔**（flash／等價 ID）；租戶不可自選更高價 SKU。不承載全平台行為禁令文案。
-_Avoid_: 模型名（裸字符串）, 把 HardRules 寫進 ModelSKU, 讓租戶自選 pro／高價模型
+PlatformAdmin 配置的可路由上游模型（OpenAI 兼容端點：`base_url`／`model` 等）。客服路徑只走運營配置的**單一便宜檔**（flash／等價 ID）；租戶不可自選更高價 SKU。不承載全平台行為禁令文案。**上游 API Key 不屬 ModelSKU 持久化內容**，只存在閘道伺服器環境（見 UpstreamApiCredential）。
+_Avoid_: 模型名（裸字符串）, 把 HardRules 寫進 ModelSKU, 讓租戶自選 pro／高價模型, 把 API Key 寫進數據庫或後台表單持久化
+
+**UpstreamApiCredential**：
+閘道呼叫上游（如 DeepSeek）所用的密鑰，僅來自進程環境變數（`DEEPSEEK_API_KEY`）。不進 Supabase、不進 DesktopConfig、不回傳客戶端。缺失時不得預扣 Credit、不得呼叫上游。
+_Avoid_: 庫內明文 api_key, 客戶端 BYOK, 缺 key 仍打上游, 用 DB 舊 key 回落
 
 **UpstreamChatPolicy**：
 閘道組裝上游 chat/completions 請求體的硬規則：強制非流式（見 ADR-0012）、`thinking` 關閉、`max_tokens` 硬頂（1024）、帶 `user=tenant:<tenantId>`；桌面不可覆寫。峰谷時段價差一期不做，單價仍用現行價目。

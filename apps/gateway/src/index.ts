@@ -70,6 +70,12 @@ import {
   assertUpstreamUsagePolicy,
   buildUpstreamChatBody,
 } from './upstreamChatBody.js';
+import {
+  getUpstreamApiKey,
+  hasUpstreamApiKey,
+  maskUpstreamApiKey,
+  requireUpstreamApiKey,
+} from './upstreamApiKey.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -100,12 +106,6 @@ app.use('/admin', express.static(path.join(__dirname, '../admin')));
 
 /** 停用后 JWT 仍有效时，禁止一切 /tenant 读写（/me 可看停用状态） */
 app.use('/tenant', authRequired, requireActiveTenant);
-
-function maskApiKey(key: string): string {
-  if (!key) return '';
-  if (key.length <= 4) return '****';
-  return `${'*'.repeat(Math.min(8, key.length - 4))}${key.slice(-4)}`;
-}
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
@@ -521,14 +521,14 @@ app.get(
       id: string;
       name: string;
       base_url: string;
-      api_key: string;
       model: string;
       active: boolean;
       platform_prompt: string;
     }>(
-      `SELECT id, name, base_url, api_key, model, active, platform_prompt
+      `SELECT id, name, base_url, model, active, platform_prompt
        FROM model_skus ORDER BY active DESC, name ASC`,
     );
+    const envKey = getUpstreamApiKey();
     res.json({
       success: true,
       data: r.rows.map((row) => ({
@@ -538,8 +538,10 @@ app.get(
         model: row.model,
         active: row.active,
         platformPrompt: row.platform_prompt,
-        apiKeyMasked: maskApiKey(row.api_key),
-        hasApiKey: Boolean(row.api_key),
+        /** Key 來自環境變數，不來自 DB（ADR-0014） */
+        apiKeySource: 'env' as const,
+        apiKeyMasked: maskUpstreamApiKey(envKey),
+        hasApiKey: hasUpstreamApiKey(),
       })),
     });
   },
@@ -628,34 +630,23 @@ app.post(
       .object({
         name: z.string().min(1),
         baseUrl: z.string().url(),
-        apiKey: z.string().optional().default(''),
         model: z.string().min(1),
         platformPrompt: z.string().optional(),
+        /** 已廢棄：Key 只讀環境變數，忽略請求體中的 apiKey */
+        apiKey: z.string().optional(),
       })
       .safeParse(req.body);
     if (!body.success) {
       res.status(400).json({ success: false, message: '参数有误，请检查填写内容' });
       return;
     }
-    const existing = await query<{ api_key: string }>(
-      `SELECT api_key FROM model_skus WHERE name = $1`,
-      [body.data.name],
-    );
-    const nextKey = body.data.apiKey.trim();
-    if (!nextKey && !existing.rows[0]?.api_key) {
-      res.status(400).json({ success: false, message: '请填写接口密钥' });
-      return;
-    }
     await query(`UPDATE model_skus SET active = false`);
     const r = await query(
       `INSERT INTO model_skus (name, base_url, api_key, model, platform_prompt, active)
-       VALUES ($1,$2,$3,$4,$5,true)
+       VALUES ($1,$2,'',$3,$4,true)
        ON CONFLICT (name) DO UPDATE SET
          base_url = EXCLUDED.base_url,
-         api_key = CASE
-           WHEN EXCLUDED.api_key = '' THEN model_skus.api_key
-           ELSE EXCLUDED.api_key
-         END,
+         api_key = '',
          model = EXCLUDED.model,
          platform_prompt = EXCLUDED.platform_prompt,
          active = true
@@ -663,12 +654,18 @@ app.post(
       [
         body.data.name,
         body.data.baseUrl,
-        nextKey,
         body.data.model,
         body.data.platformPrompt ?? '',
       ],
     );
-    res.json({ success: true, data: r.rows[0] });
+    res.json({
+      success: true,
+      data: {
+        ...r.rows[0],
+        hasApiKey: hasUpstreamApiKey(),
+        apiKeySource: 'env',
+      },
+    });
   },
 );
 
@@ -1442,12 +1439,23 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
 
   const sku = await query<{
     base_url: string;
-    api_key: string;
     model: string;
     platform_prompt: string;
-  }>(`SELECT * FROM model_skus WHERE active = true LIMIT 1`);
+  }>(
+    `SELECT base_url, model, platform_prompt FROM model_skus WHERE active = true LIMIT 1`,
+  );
   if (!sku.rows[0]) {
     res.status(503).json({ success: false, message: '尚未配置智能回复模型，请先在运营后台填写并保存' });
+    return;
+  }
+  let upstreamApiKey: string;
+  try {
+    upstreamApiKey = requireUpstreamApiKey();
+  } catch {
+    res.status(503).json({
+      success: false,
+      message: '智能回复密钥未配置，请联系运营在服务器设置 DEEPSEEK_API_KEY',
+    });
     return;
   }
 
@@ -1623,7 +1631,7 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${sku.rows[0].api_key}`,
+        Authorization: `Bearer ${upstreamApiKey}`,
       },
       signal: upstreamAbort.signal,
       body: JSON.stringify(upstreamBody),
