@@ -316,6 +316,18 @@ export async function focusShopTask(taskId: string) {
   return data;
 }
 
+/** 关窗后重新打开该店 Chrome，以便再次扫码 */
+export async function reopenTaskBrowser(taskId: string) {
+  const data = await POST<{ success?: boolean; error?: string }>(
+    `/api/v1/strategy/task/reopen-browser`,
+    { taskId },
+  );
+  if (data && typeof data === 'object' && data.success === false) {
+    throw new Error(data.error || '无法重新打开浏览器');
+  }
+  return data;
+}
+
 export async function getHandoffList() {
   const data = await GET<{ data: HandoffAlertItem[] }>('/api/v1/handoff/list');
   return data;

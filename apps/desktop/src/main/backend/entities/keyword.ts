@@ -18,6 +18,9 @@ export class Keyword extends Model {
   declare fuzzy: boolean;
 
   declare has_regular: boolean;
+
+  /** 雲同步穩定 ID（UUID） */
+  declare cloud_id: string | null;
 }
 
 export async function checkAndAddFields(sequelize: Sequelize) {
@@ -44,6 +47,14 @@ export async function checkAndAddFields(sequelize: Sequelize) {
   // @ts-ignore
   if (!tableDescription.shop_id) {
     await sequelize.getQueryInterface().addColumn('keyword', 'shop_id', {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+    });
+  }
+
+  // @ts-ignore
+  if (!tableDescription.cloud_id) {
+    await sequelize.getQueryInterface().addColumn('keyword', 'cloud_id', {
       type: DataTypes.STRING(64),
       allowNull: true,
     });
@@ -87,6 +98,10 @@ export function initKeyword(sequelize: Sequelize) {
         type: DataTypes.BOOLEAN,
         allowNull: true,
         defaultValue: false,
+      },
+      cloud_id: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
       },
     },
     {

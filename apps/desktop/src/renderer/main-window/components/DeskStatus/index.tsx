@@ -1,21 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Badge, Box, HStack, Text, Tooltip } from '@chakra-ui/react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  getConfig,
-} from '../../../common/services/platform/controller';
+import { getConfig } from '../../../common/services/platform/controller';
 import { DriverConfig } from '../../../common/services/platform/platform';
 import { useWebSocketContext } from '../../hooks/useBroadcastContext';
 
 type MePayload = {
-  username?: string;
-  displayName?: string;
-  tenantName?: string;
+  user?: { username?: string; role?: string };
+  tenant?: { name?: string };
   lowBalance?: boolean;
   wallet?: { available?: number; balance?: number };
 };
 
+/** 保留组件：顶栏已由 AppShell 承接 DeskStatus；此处供需要内嵌状态条时复用。 */
 const DeskStatus = () => {
+  const navigate = useNavigate();
   const [me, setMe] = useState<MePayload | null>(null);
   const { registerEventHandler } = useWebSocketContext();
 
@@ -61,11 +61,11 @@ const DeskStatus = () => {
   }, [registerEventHandler, refetchDriver, refreshMe]);
 
   const openAccountSettings = () => {
-    window.electron?.ipcRenderer?.sendMessage?.('open-settings-window', {});
+    navigate('/settings/account');
   };
 
   const identity =
-    me?.displayName || me?.username || me?.tenantName || '未登录网关';
+    me?.user?.username || me?.tenant?.name || '未登录网关';
   const balance = me?.wallet?.available ?? me?.wallet?.balance;
   const low = Boolean(me?.lowBalance);
 
@@ -83,7 +83,7 @@ const DeskStatus = () => {
           <Text fontSize="sm" fontWeight="medium">
             {identity}
           </Text>
-          <Tooltip label="点击打开设置 → 账户与点数">
+          <Tooltip label="点击打开设置 → 账户">
             <Badge
               colorScheme={low ? 'red' : 'teal'}
               cursor="pointer"

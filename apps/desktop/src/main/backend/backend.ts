@@ -284,8 +284,31 @@ class BKServer {
           cfg,
         };
 
+        const {
+          assertCanEditDesktopConfig,
+          pushDesktopSettings,
+        } = await import('./services/desktopConfigSync');
+        // llm／密鑰類不走雲同步，仍允許離線改；策略開關需在線
+        if (type === 'generic' || type === 'driver') {
+          await assertCanEditDesktopConfig();
+        }
+
         await this.configController.updateConfigByType(data);
         await this.dispatchService.syncConfig();
+        if (type === 'generic' || type === 'driver') {
+          try {
+            await pushDesktopSettings();
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            const conflict = /云端刷新|其他设备/.test(message);
+            res.status(conflict ? 409 : 503).json({
+              success: false,
+              message,
+              code: conflict ? 'CONFIG_VERSION_CONFLICT' : 'CONFIG_SYNC_FAILED',
+            });
+            return;
+          }
+        }
         res.json({ success: true });
       }),
     );
@@ -348,60 +371,105 @@ class BKServer {
     });
 
     this.app.post('/api/v1/reply/create', async (req, res) => {
-      const {
-        platform_id: platformId,
-        keyword,
-        reply,
-        mode,
-        fuzzy,
-        has_regular,
-        shop_id: shopId,
-      } = req.body;
-      await this.keywordReplyController.create({
-        mode,
-        platform_id: platformId,
-        keyword,
-        reply,
-        fuzzy,
-        has_regular,
-        shop_id: shopId || null,
-      });
-      res.json({ success: true });
+      try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
+        const {
+          platform_id: platformId,
+          keyword,
+          reply,
+          mode,
+          fuzzy,
+          has_regular,
+          shop_id: shopId,
+        } = req.body;
+        await this.keywordReplyController.create({
+          mode,
+          platform_id: platformId,
+          keyword,
+          reply,
+          fuzzy,
+          has_regular,
+          shop_id: shopId || null,
+        });
+        schedulePushDesktopKeywords();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     this.app.post('/api/v1/reply/update', async (req, res) => {
-      const {
-        id,
-        platform_id: platformId,
-        keyword,
-        reply,
-        mode,
-        fuzzy,
-        has_regular,
-        shop_id: shopId,
-      } = req.body;
-      await this.keywordReplyController.update(id, {
-        mode,
-        platform_id: platformId,
-        keyword,
-        reply,
-        fuzzy,
-        has_regular,
-        shop_id: shopId || null,
-      });
-      res.json({ success: true });
+      try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
+        const {
+          id,
+          platform_id: platformId,
+          keyword,
+          reply,
+          mode,
+          fuzzy,
+          has_regular,
+          shop_id: shopId,
+        } = req.body;
+        await this.keywordReplyController.update(id, {
+          mode,
+          platform_id: platformId,
+          keyword,
+          reply,
+          fuzzy,
+          has_regular,
+          shop_id: shopId || null,
+        });
+        schedulePushDesktopKeywords();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     this.app.post('/api/v1/reply/delete', async (req, res) => {
-      const { id } = req.body;
-      await this.keywordReplyController.delete(id);
-      res.json({ success: true });
+      try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
+        const { id } = req.body;
+        await this.keywordReplyController.delete(id);
+        schedulePushDesktopKeywords();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     this.app.post('/api/v1/reply/excel', async (req, res) => {
       const { path } = req.body;
       try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
         await this.keywordReplyController.importExcel(path);
+        schedulePushDesktopKeywords();
         res.json({ success: true });
       } catch (error) {
         // @ts-ignore
@@ -466,37 +534,82 @@ class BKServer {
     });
 
     this.app.post('/api/v1/transfer/create', async (req, res) => {
-      const { app_id: appId, keyword, has_regular, fuzzy } = req.body;
-      await this.keywordReplyController.createTransfer({
-        app_id: appId,
-        keyword,
-        has_regular,
-        fuzzy,
-      });
-      res.json({ success: true });
+      try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
+        const { app_id: appId, keyword, has_regular, fuzzy } = req.body;
+        await this.keywordReplyController.createTransfer({
+          app_id: appId,
+          keyword,
+          has_regular,
+          fuzzy,
+        });
+        schedulePushDesktopKeywords();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     this.app.post('/api/v1/transfer/update', async (req, res) => {
-      const { id, app_id: appId, keyword, has_regular, fuzzy } = req.body;
-      await this.keywordReplyController.updateTransfer(id, {
-        app_id: appId,
-        keyword,
-        has_regular,
-        fuzzy,
-      });
-      res.json({ success: true });
+      try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
+        const { id, app_id: appId, keyword, has_regular, fuzzy } = req.body;
+        await this.keywordReplyController.updateTransfer(id, {
+          app_id: appId,
+          keyword,
+          has_regular,
+          fuzzy,
+        });
+        schedulePushDesktopKeywords();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     this.app.post('/api/v1/transfer/delete', async (req, res) => {
-      const { id } = req.body;
-      await this.keywordReplyController.deleteTransfer(id);
-      res.json({ success: true });
+      try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
+        const { id } = req.body;
+        await this.keywordReplyController.deleteTransfer(id);
+        schedulePushDesktopKeywords();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     this.app.post('/api/v1/transfer/excel', async (req, res) => {
       const { path } = req.body;
       try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
         await this.keywordReplyController.importTransferExcel(path);
+        schedulePushDesktopKeywords();
         res.json({ success: true });
       } catch (error) {
         // @ts-ignore
@@ -562,35 +675,80 @@ class BKServer {
     });
 
     this.app.post('/api/v1/replace/create', async (req, res) => {
-      const { app_id: appId, keyword, replace } = req.body;
-      await this.keywordReplyController.createReplace({
-        app_id: appId,
-        keyword,
-        replace,
-      });
-      res.json({ success: true });
+      try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
+        const { app_id: appId, keyword, replace } = req.body;
+        await this.keywordReplyController.createReplace({
+          app_id: appId,
+          keyword,
+          replace,
+        });
+        schedulePushDesktopKeywords();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     this.app.post('/api/v1/replace/update', async (req, res) => {
-      const { id, app_id: appId, keyword, replace } = req.body;
-      await this.keywordReplyController.updateReplace(id, {
-        app_id: appId,
-        keyword,
-        replace,
-      });
-      res.json({ success: true });
+      try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
+        const { id, app_id: appId, keyword, replace } = req.body;
+        await this.keywordReplyController.updateReplace(id, {
+          app_id: appId,
+          keyword,
+          replace,
+        });
+        schedulePushDesktopKeywords();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     this.app.post('/api/v1/replace/delete', async (req, res) => {
-      const { id } = req.body;
-      await this.keywordReplyController.deleteReplace(id);
-      res.json({ success: true });
+      try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
+        const { id } = req.body;
+        await this.keywordReplyController.deleteReplace(id);
+        schedulePushDesktopKeywords();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     this.app.post('/api/v1/replace/excel', async (req, res) => {
       const { path } = req.body;
       try {
+        const {
+          assertCanEditDesktopConfig,
+          schedulePushDesktopKeywords,
+        } = await import('./services/desktopConfigSync');
+        await assertCanEditDesktopConfig();
         await this.keywordReplyController.importReplaceExcel(path);
+        schedulePushDesktopKeywords();
         res.json({ success: true });
       } catch (error) {
         // @ts-ignore
@@ -792,6 +950,10 @@ class BKServer {
     this.app.post('/api/v1/strategy/tasks', async (req, res) => {
       const { appId } = req.body;
       try {
+        const { assertCanEditDesktopConfig } = await import(
+          './services/desktopConfigSync'
+        );
+        await assertCanEditDesktopConfig();
         const task = await this.appService.addTask(String(appId));
         res.json({
           success: true,
@@ -810,6 +972,10 @@ class BKServer {
     this.app.post('/api/v1/strategy/task/remove', async (req, res) => {
       const { taskId } = req.body;
       try {
+        const { assertCanEditDesktopConfig } = await import(
+          './services/desktopConfigSync'
+        );
+        await assertCanEditDesktopConfig();
         const ok = await this.appService.removeTask(String(taskId));
         if (!ok) {
           res.json({
@@ -853,6 +1019,20 @@ class BKServer {
       try {
         const r = await this.dispatchService.focusWebInstance(Number(taskId));
         res.json({ success: r.ok, shopName: r.shopName, error: r.error });
+      } catch (error) {
+        res.json({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    // 关窗后重新打开浏览器（再次扫码／恢复会话）
+    this.app.post('/api/v1/strategy/task/reopen-browser', async (req, res) => {
+      const { taskId } = req.body || {};
+      try {
+        const r = await this.appService.reopenPinduoduoBrowser(String(taskId));
+        res.json({ success: r.ok, error: r.error });
       } catch (error) {
         res.json({
           success: false,

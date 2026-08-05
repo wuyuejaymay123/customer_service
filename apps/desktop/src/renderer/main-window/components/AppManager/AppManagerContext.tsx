@@ -26,12 +26,15 @@ interface AppManagerContextType {
   selectedAppId: string | null;
   setSelectedInstanceId: React.Dispatch<React.SetStateAction<string | null>>;
   selectedInstanceId: string | null;
+  /** 当前展示的店铺列表（已含搜索过滤，跨平台） */
   filteredInstances: Instance[];
   isSettingsOpen: boolean;
   setIsSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   handleSearch: (searchTerm: string) => void;
+  searchTerm: string;
   handleDelete: (taskId: string) => void;
-  handleAddTask: () => void;
+  /** 不传则默认拼多多 */
+  handleAddTask: (appId?: string) => Promise<void>;
   instances: Instance[];
   refetchTasks: () => void;
 }
@@ -52,6 +55,24 @@ export const useAppManager = (): AppManagerContextType => {
   return context;
 };
 
+export function platformLabel(appId?: string | null): string {
+  if (appId === 'pinduoduo') return '拼多多';
+  if (appId === 'win_qianniu') return '千牛';
+  return appId || '未知平台';
+}
+
+function shopSearchText(instance: Instance, apps?: App[]): string {
+  const appName =
+    apps?.find((a) => a.id === instance.app_id)?.name ||
+    platformLabel(instance.app_id);
+  const shop =
+    instance.shop_name?.trim() ||
+    (instance.app_id === 'win_qianniu'
+      ? '多店铺模式'
+      : `#${instance.task_id}`);
+  return `${appName} ${platformLabel(instance.app_id)} ${shop} ${instance.task_id}`.toLowerCase();
+}
+
 const usePlatformList = () => {
   const [retryCount, setRetryCount] = useState(0);
 
@@ -59,7 +80,7 @@ const usePlatformList = () => {
     ['platformList'],
     getPlatformList,
     {
-      retry: false, // 禁用 react-query 内置的重试机制
+      retry: false,
     },
   );
 
@@ -83,9 +104,6 @@ const useTaskList = () => {
   });
 };
 
-/**
- * 返回全部应用的全部实例
- */
 const useInstances = () => {
   const { data: taskData, refetch: refetchTasks } = useTaskList();
   const instances = taskData?.data || [];
@@ -93,39 +111,6 @@ const useInstances = () => {
   return { instances, refetchTasks };
 };
 
-/**
- * 返回当前选择的应用下的实例
- */
-const useFilteredInstances = (
-  data: { data: App[] } | undefined,
-  instances: Instance[],
-  selectedAppId: string | null,
-) => {
-  const [filteredInstances, setFilteredInstances] = useState<Instance[]>([]);
-
-  useEffect(() => {
-    if (selectedAppId && data) {
-      const matchedInstances = instances.filter(
-        (instance) => instance.app_id === selectedAppId,
-      );
-      const updatedInstances = matchedInstances.map((instance) => ({
-        ...instance,
-        avatar:
-          data.data.find((app) => app.id === instance.app_id)?.avatar ||
-          defaultPlatformIcon,
-      }));
-      setFilteredInstances(updatedInstances);
-    } else {
-      setFilteredInstances([]);
-    }
-  }, [selectedAppId, instances, data]);
-
-  return { filteredInstances, setFilteredInstances };
-};
-
-/**
- * 监听刷新配置事件，避免因为重启导致的配置不同步
- */
 const useRefreshConfigListener = (refetchTasks: () => void) => {
   useEffect(() => {
     const refreshConfigListener = async () => {
@@ -146,48 +131,39 @@ const useRefreshConfigListener = (refetchTasks: () => void) => {
 export const AppManagerProvider = ({ children }: AppManagerProviderProps) => {
   const { data, isLoading } = usePlatformList();
   const toast = useToast();
-  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  /** 添加店铺时的默认平台；列表不再依赖选中平台过滤 */
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(
+    'pinduoduo',
+  );
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(
     null,
   );
   const [isTasksLoading, setIsTasksLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const { instances, refetchTasks } = useInstances();
 
   useRefreshConfigListener(refetchTasks);
 
-  const { filteredInstances, setFilteredInstances } = useFilteredInstances(
-    data,
-    instances,
-    selectedAppId,
-  );
+  const filteredInstances = useMemo(() => {
+    const withAvatar = instances.map((instance) => ({
+      ...instance,
+      avatar:
+        data?.data.find((app) => app.id === instance.app_id)?.avatar ||
+        defaultPlatformIcon,
+    }));
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return withAvatar;
+    return withAvatar.filter((instance) =>
+      shopSearchText(instance, data?.data).includes(q),
+    );
+  }, [instances, data, searchTerm]);
 
-  /**
-   * 根据应用名称搜索实例
-   */
-  const handleSearch = useCallback(
-    (searchTerm: string) => {
-      if (data) {
-        const matchedInstances = instances.filter((instance) => {
-          const app = data.data.find((x) => x.id === instance.app_id);
-          return app?.name.includes(searchTerm);
-        });
-        const updatedInstances = matchedInstances.map((instance) => ({
-          ...instance,
-          avatar:
-            data.data.find((app) => app.id === instance.app_id)?.avatar ||
-            defaultPlatformIcon,
-        }));
-        setFilteredInstances(updatedInstances);
-      }
-    },
-    [data, instances, setFilteredInstances],
-  );
+  const handleSearch = useCallback((term: string) => {
+    setSearchTerm(term);
+  }, []);
 
-  /**
-   * 删除任务
-   */
   const handleDelete = useCallback(
     async (taskId: string) => {
       try {
@@ -210,14 +186,13 @@ export const AppManagerProvider = ({ children }: AppManagerProviderProps) => {
     [refetchTasks, toast],
   );
 
-  /**
-   * 添加任务
-   */
-  const handleAddTask = useCallback(async () => {
-    if (selectedAppId) {
+  const handleAddTask = useCallback(
+    async (appId?: string) => {
+      const target = appId || selectedAppId || 'pinduoduo';
+      setSelectedAppId(target);
       setIsTasksLoading(true);
       try {
-        const { error } = await addTask(selectedAppId);
+        const { error } = await addTask(target);
         if (error) {
           throw new Error(error);
         }
@@ -238,8 +213,9 @@ export const AppManagerProvider = ({ children }: AppManagerProviderProps) => {
       } finally {
         setIsTasksLoading(false);
       }
-    }
-  }, [selectedAppId, refetchTasks, toast]);
+    },
+    [selectedAppId, refetchTasks, toast],
+  );
 
   const contextValue = useMemo(
     () => ({
@@ -254,6 +230,7 @@ export const AppManagerProvider = ({ children }: AppManagerProviderProps) => {
       isSettingsOpen,
       setIsSettingsOpen,
       handleSearch,
+      searchTerm,
       handleDelete,
       handleAddTask,
       instances,
@@ -269,6 +246,7 @@ export const AppManagerProvider = ({ children }: AppManagerProviderProps) => {
       isSettingsOpen,
       instances,
       handleSearch,
+      searchTerm,
       handleDelete,
       handleAddTask,
       refetchTasks,

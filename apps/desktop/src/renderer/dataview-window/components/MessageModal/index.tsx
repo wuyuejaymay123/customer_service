@@ -18,6 +18,7 @@ import {
   Tooltip,
 } from '@chakra-ui/react';
 import ReactPaginate from 'react-paginate';
+import { formatDateTime } from '../../../common/utils/formatDateTime';
 
 type MessageModalProps = {
   isOpen: boolean;
@@ -87,7 +88,7 @@ const MessageModal = ({ isOpen, onClose, messages }: MessageModalProps) => {
                   </Td>
                   <Td>{message.sender}</Td>
                   <Td>{message.type}</Td>
-                  <Td>{new Date(message.created_at).toLocaleString()}</Td>
+                  <Td>{formatDateTime(message.created_at)}</Td>
                 </Tr>
               ))}
             </Tbody>

@@ -1,32 +1,13 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  ChakraProvider,
-  Flex,
-  Tabs,
-  TabList,
-  TabPanels,
-  Tab,
-  TabPanel,
-  Heading,
-  Text,
-  Button,
-  useToast,
-  HStack,
-} from '@chakra-ui/react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChakraProvider, Box, Flex } from '@chakra-ui/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import GeneralSettings from './components/Settings/GeneralSettings';
-import AccountSettings from './components/Settings/AccountSettings';
-import InstanceShopSettings from './components/Settings/InstanceShopSettings';
-import AboutPage from './components/About';
+import SettingsCenter, {
+  SettingsSection,
+} from '../common/settings/SettingsCenter';
 import { trackPageView } from '../common/services/analytics';
-import {
-  checkConfigActive,
-  activeConfig,
-  getTasks,
-} from '../common/services/platform/controller';
-import { Instance } from '../common/services/platform/platform';
 import theme from '../common/styles/theme';
 import '../common/App.css';
+import '../common/shell/appShell.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,71 +26,95 @@ function readSettingsFromLocation() {
     const appId = q.get('appId') || undefined;
     const instanceId = q.get('instanceId') || undefined;
     const tab = q.get('tab') || undefined;
-    return { appId, instanceId, tab };
+    const section = q.get('section') as SettingsSection | null;
+    return { appId, instanceId, tab, section: section || undefined };
   } catch {
     return {};
   }
 }
 
-const SettingsCenter = () => {
-  const [settings, setSettings] = useState<{
-    appId?: string;
-    instanceId?: string;
-    tab?: string;
-  }>(() => readSettingsFromLocation());
-  const [shops, setShops] = useState<Instance[]>([]);
-  const toast = useToast();
+function sectionFromLegacyTab(
+  tab?: string,
+  instanceId?: string,
+): SettingsSection {
+  if (tab === 'reply') return 'reply';
+  if (tab === 'shop' || instanceId) return 'shop';
+  if (tab === 'about') return 'about';
+  if (tab === 'voice') return 'voice';
+  if (tab === 'points') return 'points';
+  return 'account';
+}
+
+type NavItem =
+  | { kind: 'link'; id: SettingsSection; label: string }
+  | { kind: 'group'; id: string; label: string; children: SettingsSection[] };
+
+const NAV: NavItem[] = [
+  {
+    kind: 'group',
+    id: 'storewide',
+    label: '全店管理',
+    children: ['voice', 'reply', 'kw-match', 'kw-replace', 'kw-transfer'],
+  },
+  { kind: 'link', id: 'shop', label: '单店管理' },
+  {
+    kind: 'group',
+    id: 'points',
+    label: '积分',
+    children: ['points-bal', 'points-rech', 'points-usage'],
+  },
+  {
+    kind: 'group',
+    id: 'account',
+    label: '账户',
+    children: ['account'],
+  },
+  { kind: 'link', id: 'kw-history', label: '历史聊天记录' },
+];
+
+const LABELS: Record<SettingsSection, string> = {
+  voice: '规则',
+  reply: '回复策略',
+  shop: '单店管理',
+  points: '积分',
+  'points-bal': '积分余额',
+  'points-rech': '充值明细',
+  'points-usage': '用量明细',
+  account: '登录与改密',
+  about: '关于',
+  'kw-match': '关键词匹配',
+  'kw-replace': '关键词替换',
+  'kw-transfer': '关键词转接',
+  'kw-history': '历史聊天记录',
+};
+
+const SettingsShell = () => {
+  const initial = readSettingsFromLocation();
+  const [section, setSection] = useState<SettingsSection>(
+    () =>
+      initial.section || sectionFromLegacyTab(initial.tab, initial.instanceId),
+  );
+  const [appId, setAppId] = useState(initial.appId);
+  const [instanceId, setInstanceId] = useState(initial.instanceId);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    storewide: true,
+    points: true,
+    account: true,
+  });
 
   useEffect(() => {
     trackPageView('Settings');
   }, []);
 
-  const ensureConfigActive = useCallback(
-    async (appId: string, instanceId?: string) => {
-      try {
-        const resp = await checkConfigActive({ appId, instanceId });
-        if (!resp.data.active) {
-          await activeConfig({ active: true, appId, instanceId });
-        }
-      } catch (error) {
-        const errormsg =
-          error instanceof Error ? error.message : JSON.stringify(error);
-        toast({
-          title: '获取配置失败',
-          description: errormsg,
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        });
-      }
-    },
-    [toast],
-  );
-
-  const refreshShops = useCallback(async () => {
-    try {
-      const res = await getTasks();
-      setShops(res?.data || []);
-    } catch {
-      setShops([]);
-    }
-  }, []);
-
   useEffect(() => {
     const fromUrl = readSettingsFromLocation();
-    setSettings(fromUrl);
-    if (fromUrl.appId) {
-      ensureConfigActive(fromUrl.appId, fromUrl.instanceId);
+    if (fromUrl.section) setSection(fromUrl.section);
+    else if (fromUrl.tab || fromUrl.instanceId) {
+      setSection(sectionFromLegacyTab(fromUrl.tab, fromUrl.instanceId));
     }
-    refreshShops();
-
-    const onPopState = () => {
-      const next = readSettingsFromLocation();
-      setSettings(next);
-    };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, [ensureConfigActive, refreshShops]);
+    if (fromUrl.appId) setAppId(fromUrl.appId);
+    if (fromUrl.instanceId) setInstanceId(fromUrl.instanceId);
+  }, []);
 
   useEffect(() => {
     const { electron } = window;
@@ -130,208 +135,123 @@ const SettingsCenter = () => {
         }
       });
       if (next.appId || next.instanceId) {
-        setSettings((prev) => ({ ...prev, ...next }));
-        if (next.appId) ensureConfigActive(next.appId, next.instanceId);
-        refreshShops();
+        if (next.appId) setAppId(next.appId);
+        if (next.instanceId) {
+          setInstanceId(next.instanceId);
+          setSection('shop');
+        }
       }
     };
 
     const receivedArgs = electron.getArgs?.() || [];
     handleParams(receivedArgs);
-
     electron.ipcRenderer.on('update-settings-params', handleParams);
     return () => {
       window.electron.ipcRenderer.remove('update-settings-params');
     };
-  }, [ensureConfigActive, refreshShops]);
+  }, []);
 
-  const defaultTabIndex = useMemo(() => {
-    if (settings.tab === 'account') return 0;
-    if (settings.tab === 'reply') return 1;
-    if (settings.tab === 'shop' || settings.instanceId) return 2;
-    if (settings.tab === 'about') return 3;
-    return 0;
-  }, [settings.tab, settings.instanceId]);
+  const activeInGroup = useCallback(
+    (children: SettingsSection[]) => children.includes(section),
+    [section],
+  );
 
-  const [tabIndex, setTabIndex] = useState(defaultTabIndex);
-  useEffect(() => {
-    setTabIndex(defaultTabIndex);
-  }, [defaultTabIndex]);
-
-  const openKeywords = () => {
-    // 与顶栏入口一致；店铺作用域在关键词窗内选择
-    window.electron?.ipcRenderer?.sendMessage?.('open-dataview-window', {});
-  };
-
-  const selectShop = (inst: Instance, stayOnReplyTab = false) => {
-    setSettings({
-      appId: inst.app_id,
-      instanceId: String(inst.task_id),
-      tab: stayOnReplyTab ? 'reply' : 'shop',
-    });
-    ensureConfigActive(inst.app_id, String(inst.task_id));
-    if (!stayOnReplyTab) {
-      setTabIndex(2);
-    }
-  };
+  const navNodes = useMemo(
+    () =>
+      NAV.map((item) => {
+        if (item.kind === 'link') {
+          return (
+            <div
+              key={item.id}
+              className={`cs-nav-item${section === item.id ? ' active' : ''}`}
+              onClick={() => setSection(item.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setSection(item.id);
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              {item.label}
+            </div>
+          );
+        }
+        const open = openGroups[item.id] || activeInGroup(item.children);
+        return (
+          <React.Fragment key={item.id}>
+            <div
+              className={`cs-nav-item expand${open ? ' open' : ''}`}
+              onClick={() =>
+                setOpenGroups((prev) => ({
+                  ...prev,
+                  [item.id]: !prev[item.id],
+                }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setOpenGroups((prev) => ({
+                    ...prev,
+                    [item.id]: !prev[item.id],
+                  }));
+                }
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              {item.label}
+              <span className="caret">▸</span>
+            </div>
+            {open && (
+              <div className="cs-nav-sub">
+                {item.children.map((child) => (
+                  <div
+                    key={child}
+                    className={`cs-nav-sub-i${
+                      section === child ? ' active' : ''
+                    }`}
+                    onClick={() => setSection(child)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') setSection(child);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    {LABELS[child]}
+                  </div>
+                ))}
+              </div>
+            )}
+          </React.Fragment>
+        );
+      }),
+    [section, openGroups, activeInGroup],
+  );
 
   return (
-    <Flex direction="row" height="99vh">
-      <Tabs
-        variant="enclosed"
-        orientation="vertical"
-        flex="1"
-        index={tabIndex}
-        onChange={setTabIndex}
-      >
-        <TabList
-          p={4}
-          width="200px"
-          bg="gray.100"
-          borderRight="1px solid"
-          borderColor="gray.200"
-        >
-          <Tab
-            _selected={{ bg: 'gray.200' }}
-            _hover={{ bg: 'gray.300' }}
-            textAlign="left"
-          >
-            账户与点数
-          </Tab>
-          <Tab
-            _selected={{ bg: 'gray.200' }}
-            _hover={{ bg: 'gray.300' }}
-            textAlign="left"
-          >
-            回复策略
-          </Tab>
-          <Tab
-            _selected={{ bg: 'gray.200' }}
-            _hover={{ bg: 'gray.300' }}
-            textAlign="left"
-          >
-            本店资料
-          </Tab>
-          <Tab
-            _selected={{ bg: 'gray.200' }}
-            _hover={{ bg: 'gray.300' }}
-            textAlign="left"
-          >
-            关于
-          </Tab>
-        </TabList>
-        <TabPanels flex="1" overflowY="auto" p={4}>
-          <TabPanel>
-            <Heading as="h3" size="md" mb={4}>
-              账户与点数
-            </Heading>
-            <AccountSettings />
-          </TabPanel>
-          <TabPanel>
-            <Heading as="h3" size="md" mb={4}>
-              回复策略
-            </Heading>
-            {shops.length > 0 && (
-              <HStack spacing={2} mb={3} flexWrap="wrap">
-                <Button
-                  size="xs"
-                  variant={!settings.instanceId ? 'solid' : 'outline'}
-                  colorScheme="gray"
-                  onClick={() => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      appId: undefined,
-                      instanceId: undefined,
-                      tab: 'reply',
-                    }));
-                  }}
-                >
-                  全局默认
-                </Button>
-                {shops.map((s) => (
-                  <Button
-                    key={`reply-${s.task_id}`}
-                    size="xs"
-                    variant={
-                      String(settings.instanceId) === String(s.task_id)
-                        ? 'solid'
-                        : 'outline'
-                    }
-                    colorScheme="teal"
-                    onClick={() => selectShop(s, true)}
-                  >
-                    {s.shop_name || `#${s.task_id}`}
-                  </Button>
-                ))}
-              </HStack>
-            )}
-            <Text fontSize="sm" color="gray.600" mb={4}>
-              {settings.instanceId
-                ? `正在编辑店铺「${
-                    shops.find(
-                      (s) =>
-                        String(s.task_id) === String(settings.instanceId),
-                    )?.shop_name || `#${settings.instanceId}`
-                  }」的等待时间、超时接管、安抚语等。卖点／物流请到「本店资料」。`
-                : '正在编辑全局默认（未单独设置的店铺会用这里的值）。可选上方某店改为只改那一家。'}
-            </Text>
-            <GeneralSettings
-              style={{ width: '100%' }}
-              appId={settings.appId}
-              instanceId={settings.instanceId}
+    <Flex className="cs-app" direction="column" height="100vh">
+      <div className="cs-titlebar">
+        <div className="cs-brand">
+          <span className="logo">智</span>
+          智能客服 · 设置
+        </div>
+      </div>
+      <div className="cs-body-row">
+        <aside className="cs-nav">
+          <div className="cs-nav-items">{navNodes}</div>
+        </aside>
+        <main className="cs-main">
+          <Box className="cs-main-scroll" flex="1">
+            <SettingsCenter
+              section={section}
+              appId={appId}
+              instanceId={instanceId}
+              onShopContextChange={(next) => {
+                setAppId(next.appId);
+                setInstanceId(next.instanceId);
+              }}
             />
-          </TabPanel>
-          <TabPanel>
-            <Heading as="h3" size="md" mb={2}>
-              本店资料
-            </Heading>
-            <Text fontSize="sm" color="gray.600" mb={3}>
-              选择店铺后可编辑政策与卖点；关键词工作台由此进入。
-            </Text>
-            {shops.length > 0 && (
-              <HStack spacing={2} mb={4} flexWrap="wrap">
-                {shops.map((s) => (
-                  <Button
-                    key={s.task_id}
-                    size="xs"
-                    variant={
-                      String(settings.instanceId) === String(s.task_id)
-                        ? 'solid'
-                        : 'outline'
-                    }
-                    colorScheme="teal"
-                    onClick={() => selectShop(s)}
-                  >
-                    {s.shop_name || `#${s.task_id}`}
-                  </Button>
-                ))}
-              </HStack>
-            )}
-            {settings.instanceId ? (
-              <>
-                <HStack mb={4}>
-                  <Button size="sm" colorScheme="orange" onClick={openKeywords}>
-                    打开关键词工作台
-                  </Button>
-                </HStack>
-                <InstanceShopSettings
-                  appId={settings.appId}
-                  instanceId={settings.instanceId}
-                />
-              </>
-            ) : (
-              <Text fontSize="sm" color="gray.500">
-                {shops.length === 0
-                  ? '请先在主窗口添加拼多多店铺并扫码，再回到此处编辑本店资料。'
-                  : '请从上方选择一家店铺。'}
-              </Text>
-            )}
-          </TabPanel>
-          <TabPanel>
-            <AboutPage />
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
+          </Box>
+        </main>
+      </div>
     </Flex>
   );
 };
@@ -340,7 +260,7 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <ChakraProvider theme={theme}>
-        <SettingsCenter />
+        <SettingsShell />
       </ChakraProvider>
     </QueryClientProvider>
   );

@@ -13,6 +13,19 @@ export class ReplaceKeyword extends Model {
   declare fuzzy: boolean;
 
   declare has_regular: boolean;
+
+  declare cloud_id: string | null;
+}
+
+export async function checkAndAddReplaceFields(sequelize: Sequelize) {
+  const tableDescription = await ReplaceKeyword.describe();
+  // @ts-ignore
+  if (!tableDescription.cloud_id) {
+    await sequelize.getQueryInterface().addColumn('replace', 'cloud_id', {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+    });
+  }
 }
 
 export function initReplace(sequelize: Sequelize) {
@@ -45,6 +58,10 @@ export function initReplace(sequelize: Sequelize) {
         allowNull: true,
         defaultValue: true,
       },
+      cloud_id: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+      },
     },
     {
       sequelize,
@@ -53,4 +70,5 @@ export function initReplace(sequelize: Sequelize) {
       timestamps: false,
     },
   );
+  checkAndAddReplaceFields(sequelize);
 }

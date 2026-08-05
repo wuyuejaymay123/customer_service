@@ -82,7 +82,39 @@ export class AppService {
     if (!instance) return false;
     instance.gateway_shop_id = gatewayShopId;
     await instance.save();
+    try {
+      const { schedulePushDesktopShopRoster } = await import(
+        './desktopConfigSync'
+      );
+      schedulePushDesktopShopRoster();
+    } catch (e) {
+      console.warn('roster sync after bindGatewayShop failed:', e);
+    }
     return true;
+  }
+
+  /**
+   * 用户关窗后实例仍在：重新打开 Chrome 以便再次扫码／恢复会话。
+   */
+  public async reopenPinduoduoBrowser(
+    taskId: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const instance = await Instance.findByPk(taskId);
+    if (!instance) {
+      return { ok: false, error: '实例不存在' };
+    }
+    if (instance.app_id !== 'pinduoduo') {
+      return { ok: false, error: '仅拼多多实例支持重新打开浏览器' };
+    }
+    try {
+      await this.dispatchService.ensurePinduoduoBrowser(instance.id);
+      return { ok: true };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
   }
 
   /**
@@ -169,6 +201,14 @@ export class AppService {
           await this.dispatchService.syncConfig();
         } catch (e) {
           console.warn('sync after addTask failed:', e);
+        }
+        try {
+          const { schedulePushDesktopShopRoster } = await import(
+            './desktopConfigSync'
+          );
+          schedulePushDesktopShopRoster();
+        } catch (e) {
+          console.warn('roster sync after addTask failed:', e);
         }
         if (appId !== 'pinduoduo') {
           return instance;
@@ -257,6 +297,14 @@ export class AppService {
       await this.dispatchService.syncConfig();
     } catch (e) {
       console.warn('sync after removeTask failed:', e);
+    }
+    try {
+      const { schedulePushDesktopShopRoster } = await import(
+        './desktopConfigSync'
+      );
+      schedulePushDesktopShopRoster();
+    } catch (e) {
+      console.warn('roster sync after removeTask failed:', e);
     }
 
     return true;

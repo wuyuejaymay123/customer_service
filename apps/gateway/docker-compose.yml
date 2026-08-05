@@ -13,6 +13,7 @@ services:
       - ./src/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./src/schema-shops.sql:/docker-entrypoint-initdb.d/02-schema-shops.sql:ro
       - ./src/schema-prompt-layers.sql:/docker-entrypoint-initdb.d/03-schema-prompt-layers.sql:ro
+      - ./src/schema-desktop-config.sql:/docker-entrypoint-initdb.d/04-schema-desktop-config.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cs -d cs_billing"]
       interval: 5s

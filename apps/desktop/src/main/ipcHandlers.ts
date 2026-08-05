@@ -96,7 +96,15 @@ const setupIpcHandlers = (
 
   ipcMain.on(
     'open-settings-window',
-    async (_event, payload: { appId?: string; instanceId?: string } = {}) => {
+    async (
+      _event,
+      payload: {
+        appId?: string;
+        instanceId?: string;
+        section?: string;
+        tab?: string;
+      } = {},
+    ) => {
       console.log('[settings] ipc open-settings-window', payload);
       try {
         await createSettingsWindow({
@@ -104,6 +112,8 @@ const setupIpcHandlers = (
           instanceId: payload?.instanceId
             ? String(payload.instanceId)
             : undefined,
+          section: payload?.section ? String(payload.section) : undefined,
+          tab: payload?.tab ? String(payload.tab) : undefined,
         });
       } catch (e) {
         console.error('[settings] open failed', e);
@@ -113,13 +123,23 @@ const setupIpcHandlers = (
 
   ipcMain.handle(
     'open-settings-window',
-    async (_event, payload: { appId?: string; instanceId?: string } = {}) => {
+    async (
+      _event,
+      payload: {
+        appId?: string;
+        instanceId?: string;
+        section?: string;
+        tab?: string;
+      } = {},
+    ) => {
       console.log('[settings] invoke open-settings-window', payload);
       await createSettingsWindow({
         appId: payload?.appId ? String(payload.appId) : undefined,
         instanceId: payload?.instanceId
           ? String(payload.instanceId)
           : undefined,
+        section: payload?.section ? String(payload.section) : undefined,
+        tab: payload?.tab ? String(payload.tab) : undefined,
       });
       return { ok: true };
     },
@@ -147,19 +167,30 @@ const setupIpcHandlers = (
     'gateway:login',
     async (
       _event,
-      payload: { gatewayUrl: string; username: string; password: string },
+      payload: {
+        gatewayUrl?: string;
+        username: string;
+        password: string;
+      },
     ) => {
       try {
+        const { DEFAULT_GATEWAY_URL } = await import(
+          '../common/gatewayDefaults'
+        );
         const { loginGateway, fetchMe } = await import(
           './backend/services/gatewayClient'
         );
+        const { pullDesktopConfigOnLogin } = await import(
+          './backend/services/desktopConfigSync'
+        );
         const auth = await loginGateway(
-          payload.gatewayUrl,
+          payload.gatewayUrl || DEFAULT_GATEWAY_URL,
           payload.username,
           payload.password,
         );
         const me = await fetchMe(auth);
-        return { ok: true, me };
+        const sync = await pullDesktopConfigOnLogin();
+        return { ok: true, me, sync };
       } catch (e) {
         return {
           ok: false,
@@ -192,13 +223,25 @@ const setupIpcHandlers = (
       const { hasUsableGatewaySession } = await import(
         './backend/services/gatewayAuthPersist'
       );
+      const { pullDesktopConfigOnLogin } = await import(
+        './backend/services/desktopConfigSync'
+      );
       const auth = await loadGatewayAuth();
       if (!hasUsableGatewaySession(auth)) {
         return { ok: false, message: '尚未登录' };
       }
       const me = await fetchMe(auth!);
-      return { ok: true, me };
+      const sync = await pullDesktopConfigOnLogin();
+      return { ok: true, me, sync };
     } catch (e) {
+      try {
+        const { markGatewayOffline } = await import(
+          './backend/services/desktopConfigSync'
+        );
+        await markGatewayOffline();
+      } catch {
+        /* ignore */
+      }
       return {
         ok: false,
         message: e instanceof Error ? e.message : String(e),

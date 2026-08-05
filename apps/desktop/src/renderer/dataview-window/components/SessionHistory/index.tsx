@@ -36,8 +36,8 @@ import {
   exportMessageExcel,
 } from '../../../common/services/platform/controller';
 import { trackPageView } from '../../../common/services/analytics';
+import { formatDateTime } from '../../../common/utils/formatDateTime';
 import MessageModal from '../MessageModal';
-import DisplayContextModal from '../DisplayContextModal';
 
 const SessionHistory = () => {
   const toast = useToast();
@@ -51,11 +51,6 @@ const SessionHistory = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
-  const {
-    isOpen: isDisplayContextOpen,
-    onOpen: onDisplayContextOpen,
-    onClose: onDisplayContextClose,
-  } = useDisclosure();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
@@ -236,22 +231,25 @@ const SessionHistory = () => {
                     cursor="pointer"
                     _hover={{ bg: 'gray.100' }}
                   >
-                    {row.cells.map((cell, i) => (
-                      <Td {...cell.getCellProps()} key={i}>
-                        <Tooltip
-                          label={String(cell.value)}
-                          aria-label="A tooltip"
-                        >
-                          {truncateText(String(cell.value), 25)}
-                        </Tooltip>
-                      </Td>
-                    ))}
+                    {row.cells.map((cell, i) => {
+                      const raw = cell.value;
+                      const text =
+                        cell.column.id === 'created_at'
+                          ? formatDateTime(raw)
+                          : String(raw ?? '');
+                      return (
+                        <Td {...cell.getCellProps()} key={i}>
+                          <Tooltip label={text} aria-label="A tooltip">
+                            {truncateText(text, 25)}
+                          </Tooltip>
+                        </Td>
+                      );
+                    })}
 
                     <Td>
                       <Button
                         size={'sm'}
                         variant="link"
-                        mr={2}
                         aria-label="查看消息"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -259,18 +257,6 @@ const SessionHistory = () => {
                         }}
                       >
                         查看消息
-                      </Button>
-                      <Button
-                        size={'sm'}
-                        variant="link"
-                        aria-label="查看上下文"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedSession(row.original);
-                          onDisplayContextOpen();
-                        }}
-                      >
-                        查看上下文
                       </Button>
                     </Td>
                   </Tr>
@@ -309,11 +295,6 @@ const SessionHistory = () => {
       </Box>
 
       <MessageModal isOpen={isOpen} onClose={onClose} messages={messages} />
-      <DisplayContextModal
-        isOpen={isDisplayContextOpen}
-        onClose={onDisplayContextClose}
-        data={selectedSession?.context || ''}
-      />
     </ChakraProvider>
   );
 };

@@ -11,11 +11,11 @@ B2B 電商智能客服：Windows 桌面客戶端連平台客服界面，AI 回�
 _Avoid_: 客戶公司, 商戶帳號, account
 
 **Operator**：
-Tenant 下負責值班回覆的客服人員。
-_Avoid_: 客服帳號, user, agent
+Tenant 下負責值班回覆的客服人員（閘道模型仍可保留）。當前產品桌面以**單一商戶登入**為主路徑，已去掉「為同事開客服子帳號」作為正式能力；**DesktopConfig** 不按 Operator 拆分。
+_Avoid_: 客服帳號, user, agent, 把子帳號當配置隔離維度（當前產品不做）
 
 **TenantAdmin**：
-Tenant 內管理員；可開 Operator、設 Quota、查看本 Tenant 流水與餘額。
+Tenant 內管理員；可維護本 Tenant 配置與查看流水／餘額。歷史能力含開 Operator、設 Quota；當前桌面可不暴露開子帳號 UI。
 _Avoid_: 店長帳號（口語可保留，正式文檔用本詞）
 
 **PlatformAdmin**：
@@ -92,28 +92,32 @@ _Avoid_: 請求體（過寬）
 
 ### 桌面與渠道
 
+**AppShell**：
+桌面客戶端單一主窗口外殼：頂欄（品牌名固定為「智能客服」＋ **DeskStatus**）＋左導航＋右內容。日常路徑在殼內切換 **DutyDesk** 與 **SettingsCenter** 各目的地；需要時可另開次要窗口（如關鍵詞對照編輯），但不得作為唯一入口。換殼只調資訊架構與外觀，不新增假能力（無假統計、無「開發中」佔位當正式功能）。
+_Avoid_: 設置／關鍵詞僅能靠獨立窗到達, 左導航點了就跳窗當唯一路徑, 為對齊視覺稿捏造運行指標或空模組頁, 頂欄改名「智客 Agent」等未定案品牌
+
 **DutyDesk**：
-桌面客戶端打開後的主界面，面向 **Operator** 值班：以 **Shop** 為主視覺單位（店名＋連線／掃碼狀態），一眼看清各店與待接管，並控制 **AutoReplyMaster**／**ShopAutoReply**。Instance 僅作連線細節，不作為對外主標。首屏常駐＝Shop 列表＋回覆開關＋**HandoffAlert**；頂欄固定 **DeskStatus**；運行日誌可展開、回覆策略進 **SettingsCenter**；本版不在首屏放平台選擇器。未滿足 **DeskReady** 時不進入完整 DutyDesk，改走阻塞式就緒嚮導。
-_Avoid_: 控制台, 任務管理器, 把 TenantAdmin 配置台當首屏, 首屏同時並列配置與值班且無主次, 以「拼多多 #編號」當 Operator 主識別, 首屏常駐大塊滾動日誌與功能 checkbox 牆, 本版首屏再放多平台列表, 未就緒仍開放全部控件只靠日誌報錯
+**AppShell** 內面向 **Operator** 的值班首屏：左欄 **AutoReplyMaster**＋以 **Shop** 為單位的泳道（店名＋**ShopCardStatus**＋**ShopAutoReply**／**ShopCardAction**）；右上運行區＝真實連線／回覆日誌與狀態（無可造假指標，允許空態或可收合）；右下常駐 **HandoffAlert**。Instance 僅作連線細節。未滿足 **DeskReady** 時不進入完整 DutyDesk，改走阻塞式就緒嚮導。本版不在首屏放平台選擇器。
+_Avoid_: 控制台, 任務管理器, 把 TenantAdmin 配置台當首屏, 首屏同時並列配置與值班且無主次, 以「拼多多 #編號」當 Operator 主識別, 首屏常駐功能 checkbox 牆, 本版首屏再放多平台列表, 未就緒仍開放全部控件只靠日誌報錯, 運行區放假數據或「模組開發中」充數
 
 **DeskStatus**：
-DutyDesk 頂欄精簡狀態：已登入身分（Operator／商戶帳號顯示名）、**Wallet** 的 Credit 餘額（低於閾值變色，點擊進 SettingsCenter「帳戶與點數」）、**AutoReplyMaster** 開／關。不含在線店數彙總或閘道指示燈（店級狀態看 Shop 卡片）。
-_Avoid_: 頂欄堆砌連線燈與店數統計, 頂欄無餘額與總閘狀態, 把餘額只藏在設置深處
+**AppShell** 頂欄右側精簡狀態：已登入身分（Operator／商戶顯示名；未登顯示「未登入」）、**Wallet** 的 Credit 餘額（有數據才顯示；偏低變色）。點擊身分／餘額進入 SettingsCenter「帳戶」。**AutoReplyMaster** 放在 DutyDesk 左欄，不堆進頂欄。不含在線店數彙總或閘道指示燈（店級狀態看 Shop 泳道）。
+_Avoid_: 頂欄堆砌連線燈與店數統計, 頂欄無身分與餘額, 把餘額只藏在設置深處, 頂欄用假名或裝飾頭像充數
 
 **CreditExhaustion**：
 Wallet 不足以完成智能回覆時的處置（關鍵詞僅為 AI 素材，不得在無 AI 時冒充最終回覆）：餘額偏低時 **DeskStatus** 預警；單次智能回扣不動／失敗則該會話走 **ReplyFailure／FailureHandoff**；餘額耗盡時系統關閉 **AutoReplyMaster** 並給 Operator 全局提醒（窗可留供人工），避免每條消息刷待接管。規則轉人工（TransferKeyword 短路）仍可生效。
 _Avoid_: 點數不足時用關鍵詞直出當最終回覆, 耗盡後仍假裝智能回可用, 耗盡時只靠每條 FailureHandoff 刷佇列而無總閘提示
 
 **DeskVisual**：
-DutyDesk／SettingsCenter 的視覺取向為**日間運營台**：淺底、清晰層級、狀態語義色（在線綠／待處理琥珀／失敗紅）；主色冷靜克制，避免大塊高飽和營銷橙與深色主題優先。
-_Avoid_: 深色值班台作第一版默認, 電商營銷風當主界面, 紫漸層／奶油襯線等通用模板臉, 卡片陰影與圓角堆疊搶狀態信息
+**AppShell**／DutyDesk／SettingsCenter 的視覺取向為**日間運營台**：內容區淺底、清晰層級、狀態語義色（在線綠／待處理琥珀／失敗紅）；左導航可採深色軌道以對齊參考稿，但不把整窗做成深色主題優先。主色冷靜克制；組件策略為先換殼與 DutyDesk（TDesign 或等價樣式），SettingsCenter 內頁可暫留現有實現再遷。
+_Avoid_: 整窗深色值班台作默認, 電商營銷風當主界面, 紫漸層／奶油襯線等通用模板臉, 卡片陰影與圓角堆疊搶狀態信息, 為換皮一次重寫全部內頁邏輯
 
 **DeskUIPhase1**：
-第一期可發安裝包必須**行為真實可用**（禁止僅 UI 假開關）：DeskReady 嚮導、DutyDesk（Shop 卡與 **ShopCardStatus**、AutoReplyMaster／ShopAutoReply 真生效、ShopAutoReplyHalt、HandoffAlert 常駐、DeskStatus、CreditExhaustion）、**ShopIsolation**／**MultiShopScheduling**、SettingsCenter 合併、DeskVisual 換皮；運行日誌可展開；關鍵詞／本店資料掛入設置側欄（交互可暫沿用舊頁，但按店隔離與注入須正確）。不含關鍵詞工作台大改、不含深色主題、不含完整桌面聊天室、不承諾 100% 窗聚焦與買家氣泡級跳轉。
-_Avoid_: 第一期只換顏色不動資訊架構, 第一期開關僅展示不生效, 第一期同時重做關鍵詞與本店全部交互, 第一期做買家氣泡級跳轉
+可發安裝包必須**行為真實可用**（禁止僅 UI 假開關）：**AppShell**、DeskReady、DutyDesk（Shop 泳道與 **ShopCardStatus**、AutoReplyMaster／ShopAutoReply 真生效、ShopAutoReplyHalt、HandoffAlert、DeskStatus、CreditExhaustion、真實運行日誌區）、**ShopIsolation**／**MultiShopScheduling**、SettingsCenter 按領域左導航、DeskVisual 換殼。關鍵詞三入口與本店資料掛入殼內側欄（交互可暫沿用舊頁，按店隔離與注入須正確）；另開窗僅為可選。不含關鍵詞工作台大改、不含整窗深色主題、不含完整桌面聊天室、不承諾 100% 窗聚焦與買家氣泡級跳轉。
+_Avoid_: 第一期只換顏色不動資訊架構, 第一期開關僅展示不生效, 第一期同時重做關鍵詞與本店全部交互, 第一期做買家氣泡級跳轉, 第一期為對齊視覺稿增加假能力
 
 **ShopCardAction**：
-DutyDesk 上 Shop 卡片的主操作隨連線狀態變化：待掃碼→打開登錄窗；已登錄→本店設置（進 SettingsCenter 並預選該店）；已關閉→重新連接。ShopAutoReply 為次要控件；刪除等收入更多選單，避免與主按鈕同權重並列。
+DutyDesk 上 Shop 泳道／卡片的主操作隨連線狀態變化：待掃碼→打開登錄窗；已登錄→本店設置（在 **AppShell** 內進 SettingsCenter「單店管理」並預選該店；可選另開窗）；已關閉→重新連接。ShopAutoReply 為次要控件；刪除等收入更多選單，避免與主按鈕同權重並列。
 _Avoid_: 固定三按鈕無主次, 整卡點進詳情當唯一交互, 齒輪／刪除／播放同排同視覺權重
 
 **ShopCardStatus**：
@@ -125,8 +129,8 @@ _Avoid_: 單一綜合狀態詞掩蓋「連著但人工」, 用「離線」指代
 _Avoid_: 軟引導步驟條當唯一約束, 未登閘道仍可亂點開回覆, 把配置項一次性塞進嚮導
 
 **SettingsCenter**：
-桌面唯一設置界面：側欄分組為帳戶與點數、回覆策略、本店資料（含選店後的 ShopProfile／賣點與關鍵詞入口）、關於。DutyDesk 上 Shop 卡片「本店」捷徑打開同一中心並預選該店。本版取消獨立「平台齒輪」與獨立關鍵詞頂欄窗作為主路徑。
-_Avoid_: 全局／平台／實例三套設置窗並列, 關鍵詞永久獨立頂欄當唯一入口, 本版再保留多平台渠道設置入口
+**AppShell** 內按**領域**組織的設置目的地：規則（TenantVoice／全店回覆策略合一，可保存並納入 **DesktopConfig**）、關鍵詞匹配／替換／轉接（Tenant 全店共用三入口）、單店管理＝ShopProfile／賣點與 **ShopRoster**、積分＝餘額／充值／用量、帳戶＝登入／改密（不開客服子帳號管理）、以及關於。預設在殼內打開。DutyDesk「本店」捷徑進「單店管理」並預選該店。
+_Avoid_: 把規則／積分／改密糊成一塊且無導航區分, 關鍵詞強制先選 Shop, 帳戶頁再暴露開子帳號當正式能力, 為外觀拆出無對應能力的空頁
 
 **AutoReplyMaster**：
 DutyDesk 上的**全局**自動回覆總閘門（下班／上班）；關閉時所有 Shop 均不自動回覆。開啟時**不**自動清除各店的 ShopAutoReply 關閉狀態——此前手動停或 Halt 的店保持停，直至 Operator 在連線就緒後單獨打開該店。
@@ -173,11 +177,23 @@ _Avoid_: 全公司賣點庫, 與 ShopProfile 混為同一張無作用域表
 _Avoid_: 全庫模糊搜尋硬塞賣點, 向量檢索（第一版不做）
 
 **Session** / **Message**：
-本機對話實體；不上雲作為主數據。
+本機對話實體；不上雲作為主數據（隱私邊界，見 ADR-0001／0011）。
 
 **Keyword**：
-本機關鍵詞實體；不上雲作為主數據。提供**約束與素材**（必答點、禁用句、可引用短句），與 ShopProfile／ShopGoodsNote 一併注入閘道；**由 AI 生成最終回覆**。轉人工／硬性禁答等可短路、不必經 AI。作用域為 Shop。桌面右上「關鍵詞」為工作台入口，進門須選／切換當前 Shop；實例齒輪不承載關鍵詞編輯。
-_Avoid_: Keyword 優先於 GPT（舊規則）, 命中關鍵詞就跳過 AI, 雲端會話, 全公司一份關鍵詞且不可按店切換
+回覆用的關鍵詞／替換／轉接規則素材；提供**約束與素材**（必答點、禁用句、可引用短句），與 ShopProfile／ShopGoodsNote 一併注入閘道；**由 AI 生成最終回覆**。轉人工／硬性禁答等可短路、不必經 AI。當前產品作用域為 **Tenant 全店共用**（不按 Shop 選店編輯）。可隨 **DesktopConfig** 雲同步；本機庫為緩存。不含對話全文。
+_Avoid_: Keyword 優先於 GPT（舊規則）, 命中關鍵詞就跳過 AI, 雲端會話全文, 進關鍵詞工作台強制先選 Shop（已取消）, 按 Operator 拆多套關鍵詞
+
+**DesktopConfig**：
+隨 Tenant 帳號走的可同步桌面配置包：全店回覆策略、Keyword 整包、**ShopRoster**。經閘道 API 讀寫，庫可托管於 Supabase；帶 **ConfigVersion**。真相在雲，本機 SQLite 為緩存。離線時只讀、不可編輯。
+_Avoid_: 把 Cookie／連線狀態當 DesktopConfig, 桌面直連數據庫繞過閘道, 離線仍允許改配置並靜默覆蓋雲端
+
+**ConfigVersion**：
+某一 DesktopConfig 包的單調版本；保存必須攜帶本機已知版本，雲端已更新則拒絕覆蓋（先拉取再改）。
+_Avoid_: 無版本後寫覆蓋且不提示, 離線合併衝突 UI（第一期不做）
+
+**ShopRoster**：
+Tenant 名下店鋪名冊（顯示名、渠道、對應 Shop／綁定鍵等），可雲同步以便換機仍見店列表。名冊不是渠道真身分；真身分以掃碼／渠道登入結果為準，對不上則改綁或當新店，禁止用錯店知識回覆。
+_Avoid_: 雲名冊強制覆蓋掃碼結果, 換機還原 Cookie 免掃碼, 名冊與錯店窗口仍開自動回
 
 **ReplyFailure**：
 自動回覆輪次中**未能在時限內向買家送出有效回覆**的情況：發送／渠道硬錯誤；AI、關鍵詞與預設皆未產出可發內容；或自買家該則訊息起超過 **ReplyTimeout** 仍未成功發出。不含「時限內已用關鍵詞／預設成功發出」；亦不含規則觸發的轉人工。發生時應觸發 **FailureHandoff**。

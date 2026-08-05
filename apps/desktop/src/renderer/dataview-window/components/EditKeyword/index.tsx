@@ -14,7 +14,6 @@ import {
   Switch,
   FormControl,
   FormLabel,
-  Select,
 } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -62,19 +61,6 @@ const EditKeyword = ({
   );
   const [fuzzy, setFuzzy] = useState<boolean>(true);
   const [regular, setRegular] = useState<boolean>(false);
-  const [shopId, setShopId] = useState<string>(editKeyword?.shop_id || '');
-  const [shops, setShops] = useState<
-    Array<{ id: string; display_name: string; channel: string }>
-  >([]);
-
-  useEffect(() => {
-    window.electron?.ipcRenderer
-      ?.invoke('gateway:list-shops')
-      .then((res: { ok?: boolean; data?: typeof shops }) => {
-        if (res?.ok && Array.isArray(res.data)) setShops(res.data);
-      })
-      .catch(() => undefined);
-  }, []);
 
   useEffect(() => {
     if (!editKeyword?.keyword) {
@@ -90,7 +76,6 @@ const EditKeyword = ({
     }
 
     setPtf(editKeyword?.platform_id || '');
-    setShopId(editKeyword?.shop_id || '');
     setFuzzy(editKeyword?.fuzzy ?? true);
     setRegular(editKeyword?.has_regular ?? false);
 
@@ -171,7 +156,7 @@ const EditKeyword = ({
         reply: replyList.join('[or]'),
         fuzzy,
         has_regular: regular,
-        shop_id: shopId || null,
+        shop_id: null,
         platform_id: isGlobal ? '' : ptf,
       };
 
@@ -223,29 +208,6 @@ const EditKeyword = ({
               isLoading={isPlatformsLoading}
             />
           )}
-
-          <Box m={2}>
-            <FormControl>
-              <FormLabel>所属店铺</FormLabel>
-              <Select
-                value={shopId}
-                onChange={(e) => setShopId(e.target.value)}
-                placeholder="不指定＝渠道共用（未绑店实例可用）"
-              >
-                {shops.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.display_name}（
-                    {s.channel === 'qianniu'
-                      ? '千牛'
-                      : s.channel === 'pinduoduo'
-                        ? '拼多多'
-                        : '其他'}
-                    ）
-                  </option>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
 
           <Flex direction="column">
             <Box m={2}>

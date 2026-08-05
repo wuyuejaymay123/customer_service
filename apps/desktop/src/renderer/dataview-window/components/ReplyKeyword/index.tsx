@@ -28,14 +28,14 @@ import {
 } from '../../../common/services/platform/controller';
 import { Keyword } from '../../../common/services/platform/platform';
 
-const ReplyKeyword = ({ shopId }: { shopId?: string }) => {
+const ReplyKeyword = () => {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [editKeyword, setEditKeyword] = useState<Keyword | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [updated, setUpdated] = useState(false);
 
   const { data, isLoading, refetch } = useQuery(
-    ['replyList', shopId],
+    ['replyList'],
     () => {
       return getReplyList({
         page: 1,
@@ -55,16 +55,9 @@ const ReplyKeyword = ({ shopId }: { shopId?: string }) => {
 
   useEffect(() => {
     if (data) {
-      const all = data?.data || [];
-      if (!shopId) {
-        setKeywords([]);
-        return;
-      }
-      setKeywords(
-        all.filter((k) => !k.shop_id || k.shop_id === shopId),
-      );
+      setKeywords(data?.data || []);
     }
-  }, [data, shopId]);
+  }, [data]);
 
   if (isLoading) {
     return (
@@ -93,30 +86,21 @@ const ReplyKeyword = ({ shopId }: { shopId?: string }) => {
   };
 
   const handleAddKeyword = () => {
-    if (!shopId) return;
     const newKeyword: Keyword = {
       keyword: '',
       reply: '',
       mode: 'fuzzy',
-      shop_id: shopId,
+      shop_id: null,
     };
     setKeywords([...keywords, newKeyword]);
     setEditKeyword(newKeyword);
     onOpen();
   };
 
-  if (!shopId) {
-    return (
-      <Text fontSize="sm" color="gray.500">
-        请先在上方选择店铺。
-      </Text>
-    );
-  }
-
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" mb={2}>
-        <Text>编辑回复关键词（当前店）</Text>
+        <Text>编辑回复关键词（全店通用）</Text>
         <Flex alignItems="center">
           <HStack>
             <Button

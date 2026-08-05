@@ -27,6 +27,13 @@ import {
 import { randomString } from '../../utils';
 import { matcheTargetUrl, uploadFile } from '../../utils/playwright';
 import G_V from '../globalState';
+import {
+  candidatesFromDocumentTitle,
+  extractMallNamesFromUnknown,
+  pickPinduoduoShopName,
+} from './shopName';
+
+export { browserTabTitleForShop } from './shopName';
 
 export class Pinduoduo extends StrategyLifecycle {
   page!: Page;
@@ -49,6 +56,11 @@ export class Pinduoduo extends StrategyLifecycle {
   private initPageCounter: number = 0;
 
   private maxInitAttempts: number = 3;
+
+  /** 从接口响应里截获的真店名（优先于页面标题） */
+  private lastSeenMallName: string | null = null;
+
+  private mallNameHookInstalled = false;
 
   constructor(
     context: BrowserContext,
@@ -122,6 +134,30 @@ export class Pinduoduo extends StrategyLifecycle {
     await this.handleCustomersNotifications();
   }
 
+  private ensureMallNameNetworkHook() {
+    if (this.mallNameHookInstalled || !this.page || this.page.isClosed()) {
+      return;
+    }
+    this.mallNameHookInstalled = true;
+    this.page.on('response', (res) => {
+      void (async () => {
+        try {
+          const u = res.url();
+          if (!/mall|userinfo|shop|merchant|janus|earth/i.test(u)) return;
+          if (!res.ok()) return;
+          const ct = res.headers()['content-type'] || '';
+          if (!ct.includes('json') && !ct.includes('javascript')) return;
+          const json = await res.json().catch(() => null);
+          if (!json) return;
+          const hit = pickPinduoduoShopName(extractMallNamesFromUnknown(json));
+          if (hit) this.lastSeenMallName = hit;
+        } catch {
+          /* ignore */
+        }
+      })();
+    });
+  }
+
   /** 供 WebStrategyService 更新实例店名／登录状态 */
   async probeShopMeta(): Promise<{
     loginStatus: 'pending' | 'logged_in' | 'unknown';
@@ -131,6 +167,7 @@ export class Pinduoduo extends StrategyLifecycle {
       if (!this.page || this.page.isClosed()) {
         return { loginStatus: 'unknown', shopName: null };
       }
+      this.ensureMallNameNetworkHook();
       const url = this.page.url();
       if (url.includes('/login')) {
         return { loginStatus: 'pending', shopName: null };
@@ -139,31 +176,204 @@ export class Pinduoduo extends StrategyLifecycle {
         return { loginStatus: 'unknown', shopName: null };
       }
 
-      const selectors = [
-        '.user-name',
-        '.mall-info .name',
-        '.shop-name',
-        '.header-user-name',
-        '[class*="mallName"]',
-        '[class*="shop-name"]',
-        '.nickname',
-      ];
-      let shopName: string | null = null;
-      for (const sel of selectors) {
-        const loc = this.page.locator(sel).first();
-        // eslint-disable-next-line no-await-in-loop
-        if ((await loc.count()) > 0) {
-          // eslint-disable-next-line no-await-in-loop
-          const text = (await loc.innerText().catch(() => '')).trim();
-          if (text && text.length < 40) {
-            shopName = text;
-            break;
-          }
+      // DOM（含顶栏头像区）+ localStorage + MMS 接口；不用默认页标题当店名
+      const candidates = await this.page.evaluate(async () => {
+        const out: string[] = [];
+        const push = (t: string | null | undefined) => {
+          const s = (t || '').replace(/\s+/g, ' ').trim();
+          if (s) out.push(s);
+        };
+
+        const selectors = [
+          '.mall-info .name',
+          '[class*="mallName"]',
+          '[class*="mall-name"]',
+          '[class*="MallName"]',
+          '.shop-name',
+          '[class*="shop-name"]',
+          '[class*="shopName"]',
+          '[data-testid*="mall"]',
+          '[class*="avatar"]',
+          '[class*="Avatar"]',
+          '[class*="mall-logo"]',
+          '[class*="mallLogo"]',
+          '[class*="shop-logo"]',
+          'header [class*="logo"]',
+          '.header-user-name',
+          '.user-name',
+          '.nickname',
+        ];
+        for (const sel of selectors) {
+          document.querySelectorAll(sel).forEach((el) => {
+            push((el as HTMLElement).innerText || el.textContent);
+            if (el instanceof HTMLImageElement && el.alt) push(el.alt);
+          });
         }
-      }
-      return { loginStatus: 'logged_in', shopName };
+
+        // 顶栏左侧短文案（圆形头像里的店名简称，如「仓满多」「海圆企业店」）
+        try {
+          document.querySelectorAll('body *').forEach((node) => {
+            if (!(node instanceof HTMLElement)) return;
+            if (node.children.length > 2) return;
+            const rect = node.getBoundingClientRect();
+            if (
+              rect.top < 0 ||
+              rect.top > 72 ||
+              rect.left < 0 ||
+              rect.left > 220 ||
+              rect.width < 12 ||
+              rect.width > 180 ||
+              rect.height < 12 ||
+              rect.height > 72
+            ) {
+              return;
+            }
+            const text = (node.innerText || node.textContent || '')
+              .replace(/\s+/g, ' ')
+              .trim();
+            if (
+              text &&
+              text.length >= 2 &&
+              text.length <= 16 &&
+              !text.includes('\n')
+            ) {
+              push(text);
+            }
+          });
+        } catch {
+          /* ignore */
+        }
+
+        const mallKey =
+          /mallName|mall_name|shopName|shop_name|storeName|store_name/i;
+        const walk = (value: unknown, depth: number) => {
+          if (depth > 6 || value == null) return;
+          if (typeof value === 'string') {
+            if (
+              (value.startsWith('{') || value.startsWith('[')) &&
+              value.length < 20000
+            ) {
+              try {
+                walk(JSON.parse(value), depth + 1);
+              } catch {
+                /* ignore */
+              }
+            }
+            return;
+          }
+          if (Array.isArray(value)) {
+            value.forEach((item) => walk(item, depth + 1));
+            return;
+          }
+          if (typeof value === 'object') {
+            Object.entries(value as Record<string, unknown>).forEach(
+              ([k, v]) => {
+                if (mallKey.test(k) && typeof v === 'string') push(v);
+                else walk(v, depth + 1);
+              },
+            );
+          }
+        };
+
+        try {
+          for (let i = 0; i < localStorage.length; i += 1) {
+            const key = localStorage.key(i) || '';
+            const val = localStorage.getItem(key) || '';
+            if (
+              mallKey.test(key) ||
+              mallKey.test(val) ||
+              /mall|shop|user/i.test(key)
+            ) {
+              walk(val, 0);
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+
+        const apiPaths = [
+          '/janus/api/new/userinfo',
+          '/earth/api/mallInfo/commonMallInfo',
+          '/chats/userInfo',
+          '/api/gallery/common/mallInfo',
+        ];
+        await Promise.all(
+          apiPaths.map(async (path) => {
+            try {
+              const res = await fetch(path, {
+                credentials: 'include',
+                headers: { Accept: 'application/json' },
+              });
+              if (!res.ok) return;
+              const json = await res.json();
+              walk(json, 0);
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
+
+        return out;
+      });
+
+      // 标题仅作最后备选，且会过滤「拼多多客服平台」等平台名
+      const fromTitle = candidatesFromDocumentTitle(
+        await this.page.title().catch(() => ''),
+      );
+      const ranked = [
+        this.lastSeenMallName,
+        ...candidates.filter((c) => /旗舰店|专营店|专卖店|官方|企业店|店$/.test(c)),
+        ...candidates,
+        ...fromTitle,
+      ];
+
+      const shopName = pickPinduoduoShopName(ranked);
+      if (shopName) this.lastSeenMallName = shopName;
+
+      return {
+        loginStatus: 'logged_in',
+        shopName,
+      };
     } catch {
       return { loginStatus: 'unknown', shopName: null };
+    }
+  }
+
+  /**
+   * 覆盖 Chrome 标签标题（拼多多默认写成「主账号」）。
+   * 用锁住 title，避免 SPA 改回角色文案。
+   */
+  async applyBrowserTabTitle(title: string): Promise<void> {
+    try {
+      if (!this.page || this.page.isClosed()) return;
+      const next = (title || '').trim();
+      if (!next) return;
+      await this.page.evaluate((tabTitle) => {
+        const w = window as Window & {
+          __csTabTitle?: string;
+          __csTabLockInstalled?: boolean;
+        };
+        w.__csTabTitle = tabTitle;
+        document.title = tabTitle;
+        if (w.__csTabLockInstalled) return;
+        w.__csTabLockInstalled = true;
+        const sync = () => {
+          if (w.__csTabTitle && document.title !== w.__csTabTitle) {
+            document.title = w.__csTabTitle;
+          }
+        };
+        const titleEl = document.querySelector('title');
+        if (titleEl) {
+          new MutationObserver(sync).observe(titleEl, {
+            childList: true,
+            characterData: true,
+            subtree: true,
+          });
+        }
+        setInterval(sync, 1500);
+      }, next);
+    } catch {
+      /* 页面瞬时关闭时忽略 */
     }
   }
 

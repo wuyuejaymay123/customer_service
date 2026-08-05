@@ -60,6 +60,16 @@ export function loginStatusAfterDriverResume(
   return current;
 }
 
+/** 关窗后卡片是否应提供「重新打开浏览器」 */
+export function shouldOfferReopenBrowser(opts: {
+  loginStatus: string | null | undefined;
+  haltReason?: string | null;
+}): boolean {
+  return (
+    opts.loginStatus === 'closed' || opts.haltReason === 'browser_closed'
+  );
+}
+
 /** 挂上浏览器时写入的 login_status：已登录先保留，等 probe 确认 */
 export function loginStatusOnAttach(
   current: string | null | undefined,

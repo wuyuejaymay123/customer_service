@@ -1,0 +1,792 @@
+/* AppShell — 对齐运营台参考稿的壳层样式（不引入新 UI 库） */
+:root {
+  --cs-bg: #eef1f6;
+  --cs-panel: #fff;
+  --cs-line: #e7ebf1;
+  --cs-text: #1f2733;
+  --cs-muted: #828d9a;
+  --cs-accent: #3b6cf6;
+  --cs-accent-soft: #eaf0ff;
+  --cs-nav: #0f1830;
+  --cs-nav-hover: #16203c;
+  --cs-green: #1faa6b;
+  --cs-green-soft: #e6f6ee;
+  --cs-red: #e05454;
+}
+
+.cs-app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--cs-bg);
+  color: var(--cs-text);
+  overflow: hidden;
+}
+
+.cs-titlebar {
+  height: 46px;
+  flex: 0 0 46px;
+  background: #fff;
+  border-bottom: 1px solid var(--cs-line);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 12px;
+  z-index: 20;
+}
+
+.cs-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.cs-brand .logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #3b6cf6, #6a8dff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cs-title-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cs-ghost-btn {
+  border: 1px solid var(--cs-line);
+  background: #fff;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--cs-text);
+}
+
+.cs-ghost-btn:hover {
+  background: #f0f3f8;
+}
+
+.cs-body-row {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.cs-nav {
+  flex: 0 0 200px;
+  background: var(--cs-nav);
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.cs-nav-items {
+  flex: 1;
+  padding: 14px 10px 10px;
+}
+
+.cs-nav-item,
+.cs-nav-sub-i {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 9px;
+  color: #aeb9d4;
+  cursor: pointer;
+  margin-bottom: 3px;
+  user-select: none;
+}
+
+.cs-nav-item {
+  padding: 10px 12px;
+  font-size: 13.5px;
+}
+
+.cs-nav-item:hover,
+.cs-nav-sub-i:hover {
+  background: var(--cs-nav-hover);
+  color: #fff;
+}
+
+.cs-nav-item.active,
+.cs-nav-sub-i.active {
+  background: var(--cs-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.cs-nav-item .caret {
+  margin-left: auto;
+  font-size: 11px;
+  color: #8b97b5;
+  transition: transform 0.15s;
+}
+
+.cs-nav-item.open .caret {
+  transform: rotate(90deg);
+}
+
+.cs-nav-sub {
+  margin: 1px 6px 4px;
+}
+
+.cs-nav-sub-i {
+  padding: 8px 12px 8px 28px;
+  font-size: 13px;
+}
+
+.cs-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--cs-bg);
+}
+
+.cs-main-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.cs-main-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* DutyDesk 工作区 */
+.cs-workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cs-left-panel {
+  flex: 0 0 520px;
+  max-width: 56%;
+  display: flex;
+  flex-direction: column;
+  min-width: 360px;
+  background: #f6f8fb;
+  border-right: 1px solid var(--cs-line);
+}
+
+.cs-master-slot {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--cs-line);
+  background: #fff;
+  padding: 0;
+}
+
+.cs-master {
+  padding: 16px 14px 14px;
+  text-align: center;
+  background: #fff;
+}
+
+.cs-master-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  color: #fff;
+  background: var(--cs-red);
+  transition: background 0.2s, transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 4px 14px rgba(224, 84, 84, 0.35);
+}
+
+.cs-master-btn.on {
+  background: var(--cs-green);
+  box-shadow: 0 4px 14px rgba(31, 170, 107, 0.35);
+}
+
+.cs-master-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+.cs-master-title {
+  margin-top: 8px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--cs-text) !important;
+}
+
+.cs-master-sub {
+  margin-top: 2px !important;
+  font-size: 12px !important;
+  color: var(--cs-muted) !important;
+}
+
+.cs-shop-search {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  border-bottom: 1px solid var(--cs-line);
+}
+
+.cs-shop-search input {
+  flex: 1;
+  height: 34px;
+  border: 1px solid var(--cs-line);
+  border-radius: 8px;
+  background: #f7f9fc;
+  padding: 0 12px;
+  font-size: 13px;
+  outline: none;
+}
+
+.cs-shop-search input:focus {
+  border-color: var(--cs-accent);
+  background: #fff;
+}
+
+.cs-add-shop {
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--cs-accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cs-add-shop:hover {
+  opacity: 0.9;
+}
+
+.cs-reopen-browser {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--cs-accent);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--cs-accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cs-reopen-browser:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.cs-reopen-browser:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cs-lane {
+  margin-bottom: 10px;
+  border: 1px solid var(--cs-line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(20, 30, 50, 0.06);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.cs-lane:hover {
+  border-color: #cdd6e6;
+}
+
+.cs-lane.selected {
+  border-color: var(--cs-accent);
+  box-shadow: 0 0 0 2px var(--cs-accent-soft);
+}
+
+.cs-lane.halted {
+  background: #fff8f8;
+  border-color: #f3c9c9;
+}
+
+.cs-lane-body {
+  padding: 12px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cs-lane-row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cs-lane-row2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 18px;
+}
+
+.cs-lane-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 4px;
+  flex: 0 0 10px;
+}
+
+.cs-lane-dot.pdd {
+  background: #e02e24;
+}
+
+.cs-lane-dot.qn {
+  background: #ff6a00;
+}
+
+.cs-lane-dot.other {
+  background: #9aa4b2;
+}
+
+.cs-lane-name-wrap {
+  flex: 1 1 auto;
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.cs-lane-name {
+  display: block;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--cs-text);
+  line-height: 1.35;
+}
+
+.cs-lane-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cs-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cs-pill.ok {
+  background: var(--cs-green-soft);
+  color: var(--cs-green);
+}
+
+.cs-pill.warn {
+  background: #fff3e0;
+  color: #e8852b;
+}
+
+.cs-pill.bad {
+  background: #fcebeb;
+  color: var(--cs-red);
+}
+
+.cs-pill.muted {
+  background: #eef1f5;
+  color: #9aa4b2;
+}
+
+.cs-pill.teal {
+  background: #e6f7f5;
+  color: #0d9488;
+}
+
+.cs-lane-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  flex: 0 0 auto;
+}
+
+.cs-lane-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--cs-line);
+  background: #fff;
+  color: var(--cs-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.cs-lane-icon:hover {
+  background: #f0f3f8;
+  color: var(--cs-text);
+}
+
+.cs-lane-icon.danger:hover {
+  background: #fcebeb;
+  color: var(--cs-red);
+  border-color: #f3c9c9;
+}
+
+.cs-shop-empty {
+  padding: 28px 14px;
+  color: var(--cs-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* 单店管理：左列表 + 右资料 */
+.cs-shop-manage {
+  display: flex;
+  min-height: 0;
+  background: #fff;
+  border-top: 1px solid var(--cs-line);
+}
+
+.cs-shop-manage-side {
+  flex: 0 0 240px;
+  border-right: 1px solid var(--cs-line);
+  background: #f7f9fc;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.cs-shop-manage-side-h {
+  flex-shrink: 0;
+  padding: 14px 16px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cs-muted);
+}
+
+.cs-shop-manage-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+
+.cs-shop-manage-add {
+  flex-shrink: 0;
+  padding: 12px;
+  border-top: 1px solid var(--cs-line);
+  background: #f7f9fc;
+}
+
+.cs-shop-manage-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--cs-text);
+  cursor: pointer;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-shop-manage-item:hover {
+  background: #eef1f5;
+}
+
+.cs-shop-manage-item.active {
+  background: var(--cs-accent-soft);
+  color: var(--cs-accent);
+}
+
+.cs-shop-manage-main {
+  background: #fff;
+}
+
+.cs-shop-tip {
+  padding: 0 12px 8px;
+  font-size: 12px;
+  color: var(--cs-muted);
+  line-height: 1.5;
+}
+
+.cs-shop-slot {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.cs-right-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+}
+
+.cs-run-panel {
+  flex: 1.2;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-bottom: 1px solid var(--cs-line);
+  background: #0f1623;
+  padding: 10px 12px 12px;
+}
+
+.cs-console {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0f1623;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.cs-console-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #1c2740;
+}
+
+.cs-console-bar {
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--cs-accent);
+  flex: 0 0 auto;
+}
+
+.cs-console-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #9fb0cc;
+}
+
+.cs-console-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.cs-console-actions button {
+  border: 1px solid #2a3650;
+  background: #182032;
+  color: #9fb0cc;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.cs-console-actions button:hover {
+  background: #22304a;
+  color: #d7e2f5;
+}
+
+.cs-console-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px 14px;
+  font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.75;
+  color: #c8d3e6;
+}
+
+.cs-console-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.cs-console-tag {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 11px;
+  min-width: 36px;
+}
+
+.cs-console-tag.ok,
+.cs-console-tag.live {
+  color: #3dd68c;
+}
+
+.cs-console-tag.info {
+  color: #6aa8ff;
+}
+
+.cs-console-tag.warn {
+  color: #e8b84a;
+}
+
+.cs-console-tag.err {
+  color: #ff6b6b;
+}
+
+.cs-console-time {
+  flex: 0 0 auto;
+  color: #6f7f99;
+}
+
+.cs-console-msg {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+  color: #e8eef8;
+}
+
+.cs-console-msg.muted {
+  color: #6f7f99;
+}
+
+.cs-takeover-panel {
+  flex: 0.9;
+  min-height: 140px;
+  overflow: auto;
+  background: #fef8f0;
+  padding: 10px 12px;
+}
+
+.cs-page {
+  padding: 20px 28px 32px;
+  background: #fff;
+  min-height: 100%;
+}
+
+.cs-me-wrap {
+  position: relative;
+}
+
+.cs-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.cs-me:hover {
+  background: #f0f3f8;
+}
+
+.cs-me-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 140px;
+  background: #fff;
+  border: 1px solid var(--cs-line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(20, 30, 50, 0.12);
+  padding: 6px;
+  z-index: 50;
+}
+
+.cs-me-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--cs-text);
+  cursor: pointer;
+}
+
+.cs-me-menu-item:hover {
+  background: #f0f3f8;
+}
+
+.cs-me-menu-item.danger {
+  color: var(--cs-red);
+}
+
+.cs-me .av {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #dfe6f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cs-accent);
+}
+
+.cs-me b {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+
+.cs-me small {
+  display: block;
+  color: var(--cs-muted);
+  font-size: 11px;
+}
+
+.cs-credit {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--cs-accent-soft);
+  color: var(--cs-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cs-credit.low {
+  background: #fcebeb;
+  color: var(--cs-red);
+}

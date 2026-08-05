@@ -153,6 +153,38 @@ CREATE TABLE IF NOT EXISTS shop_goods_notes (
 CREATE INDEX IF NOT EXISTS idx_shop_goods_notes_shop ON shop_goods_notes(shop_id);
 CREATE INDEX IF NOT EXISTS idx_shop_goods_notes_tenant ON shop_goods_notes(tenant_id);
 
+-- DesktopConfig 雲同步（亦見 schema-desktop-config.sql；新庫隨本檔一次建好）
+CREATE TABLE IF NOT EXISTS tenant_desktop_settings (
+  tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  config_version BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT tenant_desktop_settings_version_nonneg CHECK (config_version >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS tenant_keywords_bundle (
+  tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  payload JSONB NOT NULL DEFAULT '{"items":[]}'::jsonb,
+  config_version BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT tenant_keywords_bundle_version_nonneg CHECK (config_version >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS tenant_shop_roster (
+  tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  payload JSONB NOT NULL DEFAULT '{"items":[]}'::jsonb,
+  config_version BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT tenant_shop_roster_version_nonneg CHECK (config_version >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_desktop_settings_updated
+  ON tenant_desktop_settings (updated_at);
+CREATE INDEX IF NOT EXISTS idx_tenant_keywords_bundle_updated
+  ON tenant_keywords_bundle (updated_at);
+CREATE INDEX IF NOT EXISTS idx_tenant_shop_roster_updated
+  ON tenant_shop_roster (updated_at);
+
 INSERT INTO price_book (key, value, note) VALUES
   ('cny_to_credit', 100, '1 CNY = 100 Credit'),
   ('credit_per_1k_prompt_tokens', 1, '每 1K prompt tokens 扣 Credit（零售≈10×Flash未命中）'),

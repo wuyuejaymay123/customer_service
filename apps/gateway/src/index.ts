@@ -58,6 +58,14 @@ import {
   TENANT_VOICE_MAX_CHARS,
 } from './promptLayers.js';
 import { listTenantUsageForClient } from './tenantUsageClient.js';
+import {
+  getAllDesktopConfig,
+  getDesktopConfig,
+  parseDesktopConfigPayload,
+  putBodySchema,
+  putDesktopConfig,
+  type DesktopConfigKind,
+} from './desktopConfig.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -1137,6 +1145,128 @@ app.put(
       ],
     );
     res.json({ success: true, data: r.rows[0] });
+  },
+);
+
+async function handleDesktopConfigPut(
+  kind: DesktopConfigKind,
+  req: express.Request,
+  res: express.Response,
+) {
+  const tid = req.user!.tenantId;
+  if (!tid) {
+    res.status(400).json({ success: false, message: '参数有误，请检查填写内容' });
+    return;
+  }
+  const body = putBodySchema.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ success: false, message: '参数有误，请检查填写内容' });
+    return;
+  }
+  const parsed = parseDesktopConfigPayload(kind, body.data.payload);
+  if (!parsed.ok) {
+    res.status(400).json({ success: false, message: parsed.message });
+    return;
+  }
+  const result = await putDesktopConfig(
+    tid,
+    kind,
+    body.data.baseVersion,
+    parsed.payload,
+  );
+  if (!result.ok) {
+    res.status(409).json({
+      success: false,
+      message: '配置已被其他设备更新，请先拉取后再保存',
+      code: 'CONFIG_VERSION_CONFLICT',
+      data: result.data,
+    });
+    return;
+  }
+  res.json({ success: true, data: result.data });
+}
+
+app.get(
+  '/tenant/desktop-config',
+  authRequired,
+  requireRole('tenant_admin', 'operator'),
+  async (req, res) => {
+    const tid = req.user!.tenantId;
+    if (!tid) {
+      res.status(400).json({ success: false, message: '参数有误，请检查填写内容' });
+      return;
+    }
+    const data = await getAllDesktopConfig(tid);
+    res.json({ success: true, data });
+  },
+);
+
+app.get(
+  '/tenant/desktop-config/settings',
+  authRequired,
+  requireRole('tenant_admin', 'operator'),
+  async (req, res) => {
+    const tid = req.user!.tenantId;
+    if (!tid) {
+      res.status(400).json({ success: false, message: '参数有误，请检查填写内容' });
+      return;
+    }
+    res.json({ success: true, data: await getDesktopConfig(tid, 'settings') });
+  },
+);
+
+app.put(
+  '/tenant/desktop-config/settings',
+  authRequired,
+  requireRole('tenant_admin', 'operator'),
+  async (req, res) => {
+    await handleDesktopConfigPut('settings', req, res);
+  },
+);
+
+app.get(
+  '/tenant/desktop-config/keywords',
+  authRequired,
+  requireRole('tenant_admin', 'operator'),
+  async (req, res) => {
+    const tid = req.user!.tenantId;
+    if (!tid) {
+      res.status(400).json({ success: false, message: '参数有误，请检查填写内容' });
+      return;
+    }
+    res.json({ success: true, data: await getDesktopConfig(tid, 'keywords') });
+  },
+);
+
+app.put(
+  '/tenant/desktop-config/keywords',
+  authRequired,
+  requireRole('tenant_admin', 'operator'),
+  async (req, res) => {
+    await handleDesktopConfigPut('keywords', req, res);
+  },
+);
+
+app.get(
+  '/tenant/desktop-config/shop-roster',
+  authRequired,
+  requireRole('tenant_admin', 'operator'),
+  async (req, res) => {
+    const tid = req.user!.tenantId;
+    if (!tid) {
+      res.status(400).json({ success: false, message: '参数有误，请检查填写内容' });
+      return;
+    }
+    res.json({ success: true, data: await getDesktopConfig(tid, 'shopRoster') });
+  },
+);
+
+app.put(
+  '/tenant/desktop-config/shop-roster',
+  authRequired,
+  requireRole('tenant_admin', 'operator'),
+  async (req, res) => {
+    await handleDesktopConfigPut('shopRoster', req, res);
   },
 );
 

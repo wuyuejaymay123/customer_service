@@ -6,6 +6,11 @@ import {
   envForPlaywrightLaunch,
 } from '../../utils/playwright';
 import { Pinduoduo } from '../../platforms/pinduoduo';
+import {
+  browserTabTitleForShop,
+  isPddShopNameNoise,
+  normalizePddShopNameCandidate,
+} from '../../platforms/pinduoduo/shopName';
 import G_V from '../../platforms/globalState';
 import { Instance } from '../entities/instance';
 import { Config } from '../entities/config';
@@ -237,15 +242,35 @@ export class WebStrategyService {
       if (meta.shopName && inst.shop_name !== meta.shopName) {
         inst.shop_name = meta.shopName;
         dirty = true;
+      } else if (inst.shop_name) {
+        const cleaned = normalizePddShopNameCandidate(inst.shop_name);
+        if (!cleaned || isPddShopNameNoise(cleaned)) {
+          // 清掉误抓的「主账号」／叠出来的「拼多多 · …」
+          if (inst.shop_name !== null) {
+            inst.shop_name = null;
+            dirty = true;
+          }
+        } else if (cleaned !== inst.shop_name) {
+          inst.shop_name = cleaned;
+          dirty = true;
+        }
       }
       if (dirty) {
         await inst.save();
         this.log.info(
           `拼多多实例 #${strategy.instance_id}：${
-            meta.shopName || '未命名店铺'
+            inst.shop_name || meta.shopName || '未命名店铺'
           }（${inst.login_status === 'logged_in' ? '已登录' : '待扫码'}）`,
         );
       }
+      // 覆盖 Chrome 标签「主账号」→ 店名／实例号
+      await strategy.applyBrowserTabTitle(
+        browserTabTitleForShop({
+          shopName: inst.shop_name || meta.shopName,
+          instanceId: strategy.instance_id,
+          pending: inst.login_status === 'pending',
+        }),
+      );
       // 掉登：整店 Halt（不关窗；会话仍在 pending）
       if (
         prevStatus === 'logged_in' &&
@@ -254,11 +279,18 @@ export class WebStrategyService {
       ) {
         await this.haltShopAutoReply(inst, 'logged_out');
       }
-      // 同店双开：拒绝第二家自动化
-      if (inst.login_status === 'logged_in' && (inst.shop_name || inst.gateway_shop_id)) {
+      // 同店双开：仅用可信店名／网关店 ID（角色文案不算身份）
+      const trustedShopName =
+        inst.shop_name && !isPddShopNameNoise(inst.shop_name)
+          ? inst.shop_name
+          : null;
+      if (
+        inst.login_status === 'logged_in' &&
+        (trustedShopName || inst.gateway_shop_id)
+      ) {
         const dupWhere: Record<string, unknown>[] = [];
-        if (inst.shop_name) {
-          dupWhere.push({ shop_name: inst.shop_name });
+        if (trustedShopName) {
+          dupWhere.push({ shop_name: trustedShopName });
         }
         if (inst.gateway_shop_id) {
           dupWhere.push({ gateway_shop_id: inst.gateway_shop_id });
@@ -841,21 +873,33 @@ export class WebStrategyService {
     });
   }
 
-  /** 确保指定拼多多实例已挂上浏览器（供新增后定向重试） */
+  /** 确保指定拼多多实例已挂上浏览器（供新增／关窗后再开） */
   async ensureInstanceBrowser(instanceId: number): Promise<void> {
     return this.runExclusive(async () => {
       await this.ensureLoop();
       await this.pruneDeadStrategies();
+      await this.evictStaleContexts();
       const inst = await Instance.findByPk(instanceId);
       if (!inst || inst.app_id !== 'pinduoduo') {
         throw new Error('实例不存在');
       }
+      let dirty = false;
       if (inst.login_status === 'closed') {
         inst.login_status = 'pending';
+        dirty = true;
+      }
+      if (inst.auto_reply_halt_reason === 'browser_closed') {
+        // 清关窗 Halt，便于重新扫码后再开自动回
+        inst.auto_reply_halt_reason = null;
+        dirty = true;
+      }
+      if (dirty) {
         await inst.save();
       }
       if (this.strategies.some((s) => s.instance_id === instanceId)) {
-        const strategy = this.strategies.find((s) => s.instance_id === instanceId);
+        const strategy = this.strategies.find(
+          (s) => s.instance_id === instanceId,
+        );
         if (strategy?.page && !strategy.page.isClosed()) {
           try {
             await strategy.page.bringToFront();
@@ -866,7 +910,21 @@ export class WebStrategyService {
         }
         await this.removeTask(instanceId, false);
       }
-      await this.addTask('pinduoduo', instanceId);
+
+      try {
+        await this.addTask('pinduoduo', instanceId);
+      } catch (e) {
+        // 共享浏览器刚被关掉时偶发 stale：清空后重试一次
+        if (!this.isPageClosedError(e)) {
+          throw e;
+        }
+        this.log.warn(
+          `拼多多实例 #${instanceId} 首次打开失败（浏览器已关），清空后重试`,
+        );
+        await this.evictStaleContexts();
+        await this.removeTask(instanceId, false).catch(() => undefined);
+        await this.addTask('pinduoduo', instanceId);
+      }
     });
   }
 }

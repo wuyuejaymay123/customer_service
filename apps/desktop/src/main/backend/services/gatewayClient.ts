@@ -678,3 +678,102 @@ export async function gatewayChat(opts: {
   }
   return json.data;
 }
+
+export type DesktopConfigBundle = {
+  configVersion: number;
+  updatedAt: string | null;
+  payload: unknown;
+};
+
+export type DesktopConfigAll = {
+  settings: DesktopConfigBundle;
+  keywords: DesktopConfigBundle;
+  shopRoster: DesktopConfigBundle;
+};
+
+export type DesktopConfigPutKind = 'settings' | 'keywords' | 'shop-roster';
+
+export class DesktopConfigConflictError extends Error {
+  data: DesktopConfigBundle;
+
+  constructor(message: string, data: DesktopConfigBundle) {
+    super(message);
+    this.name = 'DesktopConfigConflictError';
+    this.data = data;
+  }
+}
+
+async function gatewayJson(
+  auth: GatewayAuth,
+  pathAndQuery: string,
+  init?: RequestInit,
+) {
+  const a = await withAuthToken(auth);
+  const { response, auth: next } = await requestWithAuthRetry({
+    auth: a,
+    relogin: (x) => {
+      if (!x.password) {
+        return Promise.reject(new Error('请重新登录网关'));
+      }
+      return loginGateway(x.gatewayUrl, x.username, x.password);
+    },
+    request: (token) =>
+      fetch(`${a.gatewayUrl.replace(/\/$/, '')}${pathAndQuery}`, {
+        ...init,
+        headers: {
+          ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(init?.headers || {}),
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+  });
+  if (next.token && next.token !== auth.token) {
+    await saveGatewayAuth(next);
+  }
+  const json = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    message?: string;
+    code?: string;
+    data?: unknown;
+  };
+  return { response, json };
+}
+
+export async function fetchDesktopConfigAll(
+  auth: GatewayAuth,
+): Promise<DesktopConfigAll> {
+  const { response, json } = await gatewayJson(auth, '/tenant/desktop-config');
+  if (response.status === 404) {
+    throw new Error('拉取桌面配置失败（404）');
+  }
+  if (!response.ok || !json.data) {
+    throw new Error(json.message || '拉取桌面配置失败');
+  }
+  return json.data as DesktopConfigAll;
+}
+
+export async function putDesktopConfigPart(
+  auth: GatewayAuth,
+  kind: DesktopConfigPutKind,
+  baseVersion: number,
+  payload: unknown,
+): Promise<DesktopConfigBundle> {
+  const { response, json } = await gatewayJson(
+    auth,
+    `/tenant/desktop-config/${kind}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ baseVersion, payload }),
+    },
+  );
+  if (response.status === 409 && json.data) {
+    throw new DesktopConfigConflictError(
+      json.message || '配置已被其他设备更新，请先拉取后再保存',
+      json.data as DesktopConfigBundle,
+    );
+  }
+  if (!response.ok || !json.data) {
+    throw new Error(json.message || '上传桌面配置失败');
+  }
+  return json.data as DesktopConfigBundle;
+}

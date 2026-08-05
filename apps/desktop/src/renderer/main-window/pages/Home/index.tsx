@@ -1,13 +1,11 @@
 import React, { useEffect } from 'react';
-import { Box, Stack, Divider } from '@chakra-ui/react';
-import PageContainer from '../../../common/components/PageContainer';
 import { trackPageView } from '../../../common/services/analytics';
 import AppManager from '../../components/AppManager/index';
 import Panels from '../../components/Panels';
 import LogBox from '../../components/LogBox';
 import HandoffQueue from '../../components/HandoffQueue';
-import DeskStatus from '../../components/DeskStatus';
 import DeskReady from '../../components/DeskReady';
+import '../../../common/shell/appShell.css';
 
 const HomePage = () => {
   const currentVersion = window.electron.ipcRenderer.get('get-version');
@@ -17,29 +15,26 @@ const HomePage = () => {
   }, []);
 
   return (
-    <PageContainer>
-      <DeskReady>
-        <Stack spacing={2}>
-          <Box>
-            <DeskStatus />
-          </Box>
-          <Box>
-            <AppManager />
-          </Box>
-          <Divider my="4" />
-          <Box>
+    <DeskReady>
+      <div className="cs-workspace">
+        <div className="cs-left-panel">
+          <div className="cs-master-slot">
             <Panels />
-          </Box>
-          <Divider my="4" />
-          <Box>
-            <HandoffQueue />
-          </Box>
-          <Box>
+          </div>
+          <div className="cs-shop-slot">
+            <AppManager />
+          </div>
+        </div>
+        <div className="cs-right-col">
+          <div className="cs-run-panel">
             <LogBox />
-          </Box>
-        </Stack>
-      </DeskReady>
-    </PageContainer>
+          </div>
+          <div className="cs-takeover-panel">
+            <HandoffQueue />
+          </div>
+        </div>
+      </div>
+    </DeskReady>
   );
 };
 

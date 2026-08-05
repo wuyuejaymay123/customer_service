@@ -90,16 +90,8 @@ const createWindow = async () => {
     ? path.join(process.resourcesPath, 'assets')
     : path.join(__dirname, '../../assets');
 
-  const backendExe = path.resolve(
-    process.env.BKEXE_ABS ||
-      path.join(
-        RESOURCES_PATH,
-        process.env.BKEXE_PATH || './backend/__main__.exe',
-      ),
-  );
-  console.log('BKEXE_PATH resolved:', backendExe);
-
-  backendServiceManager = new BackendServiceManager(backendExe);
+  // BackendServiceManager 仅负责为本机 Node API 分配端口；不再拉起 __main__.exe
+  backendServiceManager = new BackendServiceManager('');
   await backendServiceManager.ensurePort();
 
   const getAssetPath = (...paths: string[]): string => {
@@ -108,10 +100,10 @@ const createWindow = async () => {
 
   mainWindow = new BrowserWindow({
     show: false,
-    width: 528,
-    height: 1024,
-    minWidth: 480,
-    minHeight: 720,
+    width: 1280,
+    height: 840,
+    minWidth: 960,
+    minHeight: 640,
     resizable: true,
     icon: getAssetPath('icon.png'),
     webPreferences: {
@@ -131,7 +123,6 @@ const createWindow = async () => {
   setupCron(mainWindow, backendServiceManager);
 
   const server = new Server(backendServiceManager.getPort(), mainWindow);
-  // 先启动本机 API，再拉起策略二进制（拼多多／千牛列表依赖它）
   try {
     await server.start();
     console.log('Server started successfully');

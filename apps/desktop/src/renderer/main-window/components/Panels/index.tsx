@@ -1,15 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  Stack,
-  HStack,
-  Tooltip,
-  IconButton,
-  Text,
-  VStack,
-  Checkbox,
-} from '@chakra-ui/react';
+import { Box, Text, Tooltip } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
-import { FiPause, FiPlay } from 'react-icons/fi'; // 引入播放器图标
+import { FiPause, FiPlay } from 'react-icons/fi';
 import { useToast } from '../../hooks/useToast';
 import {
   getConfig,
@@ -18,6 +10,9 @@ import {
 import { DriverConfig } from '../../../common/services/platform/platform';
 import { useWebSocketContext } from '../../hooks/useBroadcastContext';
 
+/**
+ * AutoReplyMaster 总开关（运营台）。驱动勾选项已从本屏移除，配置仍按后台已存值生效。
+ */
 const Panels = () => {
   const { toast } = useToast();
   const { registerEventHandler } = useWebSocketContext();
@@ -151,90 +146,33 @@ const Panels = () => {
     }
   };
 
+  const on = !driverSettings.hasPaused;
+
   return (
-    <Stack spacing={4}>
-      <HStack width="full" alignItems="center" justifyContent="space-between">
-        <VStack width="35%">
-          <Text fontSize="md" fontWeight="medium">
-            自动回复总开关
-          </Text>
-          <Text fontSize="xs" color="gray.500">
-            {driverSettings.hasPaused
-              ? '当前已关 · 点击开启'
-              : '当前已开 · 点击关闭'}
-          </Text>
-          <IconButton
-            icon={driverSettings.hasPaused ? <FiPlay /> : <FiPause />}
-            aria-label="AutoReplyMaster"
-            size="lg"
-            mt={1}
-            onClick={() =>
-              handleUpdateConfig({ hasPaused: !driverSettings.hasPaused })
-            }
-            isRound
-            colorScheme={driverSettings.hasPaused ? 'green' : 'red'}
-          />
-        </VStack>
-        <VStack width="65%" alignItems="flex-start">
-          <HStack>
-            <Checkbox
-              isChecked={driverSettings.hasKeywordMatch}
-              onChange={(e) =>
-                handleUpdateConfig({ hasKeywordMatch: e.target.checked })
-              }
-            >
-              <Tooltip label="开启后，命中的关键词会作为素材注入智能回复，不直接发给买家">
-                关键词匹配
-              </Tooltip>
-            </Checkbox>
-            <Checkbox
-              isChecked={driverSettings.hasUseGpt}
-              onChange={(e) =>
-                handleUpdateConfig({ hasUseGpt: e.target.checked })
-              }
-            >
-              <Tooltip label="是否开启智能回复；关闭后失败将转人工接管（不再直出关键词）">
-                智能回复
-              </Tooltip>
-            </Checkbox>
-          </HStack>
-          <HStack>
-            <Checkbox
-              isChecked={driverSettings.hasTransfer}
-              onChange={(e) =>
-                handleUpdateConfig({ hasTransfer: e.target.checked })
-              }
-            >
-              <Tooltip label="如果匹配到设置的关键词，将自动转人工">
-                关键词转人工
-              </Tooltip>
-            </Checkbox>
-            <Checkbox
-              isChecked={driverSettings.hasReplace}
-              onChange={(e) =>
-                handleUpdateConfig({ hasReplace: e.target.checked })
-              }
-            >
-              <Tooltip label="如果匹配到设置的关键词，将自动替换成自定义的关键词">
-                关键词替换
-              </Tooltip>
-            </Checkbox>
-          </HStack>
-          <HStack>
-            <Checkbox
-              isChecked={driverSettings.hasEscClose}
-              onChange={(e) =>
-                handleUpdateConfig({ hasEscClose: e.target.checked })
-              }
-            >
-              <Tooltip label="当按下 ESC 键时自动暂停">
-                按 ESC 键自动暂停
-              </Tooltip>
-            </Checkbox>
-          </HStack>
-        </VStack>
-      </HStack>
-    </Stack>
+    <Box className={`cs-master${on ? ' on' : ''}`}>
+      <Tooltip
+        label={
+          on
+            ? '点击关闭：所有店铺暂停自动回复'
+            : '点击开启：已打开本店自动回且已连接的店将自动回复'
+        }
+      >
+        <button
+          type="button"
+          className={`cs-master-btn${on ? ' on' : ''}`}
+          aria-label="AutoReplyMaster"
+          onClick={() =>
+            handleUpdateConfig({ hasPaused: !driverSettings.hasPaused })
+          }
+        >
+          {on ? <FiPause size={22} /> : <FiPlay size={22} />}
+        </button>
+      </Tooltip>
+      <Text className="cs-master-title">自动接待总开关</Text>
+      <Text className="cs-master-sub">
+        {on ? '当前已开 · 点击关闭' : '当前已关 · 点击开启'}
+      </Text>
+    </Box>
   );
 };
 

@@ -9,13 +9,20 @@ let settingsWindow: BrowserWindow | null = null;
 const isDebug =
   process.env.NODE_ENV === 'development' || process.env.DEBUG_PROD === 'true';
 
-function settingsUrl(opts: { appId?: string; instanceId?: string }) {
+function settingsUrl(opts: {
+  appId?: string;
+  instanceId?: string;
+  section?: string;
+  tab?: string;
+}) {
   const base = resolveHtmlPath('settings.html');
   const url = new URL(base);
   if (opts.appId) url.searchParams.set('appId', String(opts.appId));
   if (opts.instanceId) {
     url.searchParams.set('instanceId', String(opts.instanceId));
   }
+  if (opts.section) url.searchParams.set('section', String(opts.section));
+  if (opts.tab) url.searchParams.set('tab', String(opts.tab));
   return url.href;
 }
 
@@ -30,6 +37,8 @@ function showSettingsWindow() {
 export const createWindow = async (opts: {
   appId?: string;
   instanceId?: string;
+  section?: string;
+  tab?: string;
 } = {}) => {
   if (isDebug) {
     // await installExtensions();

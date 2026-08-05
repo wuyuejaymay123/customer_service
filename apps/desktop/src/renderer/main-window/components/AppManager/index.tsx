@@ -1,11 +1,11 @@
 import React, { useEffect } from 'react';
-import { Flex, Stack, Skeleton } from '@chakra-ui/react';
-import AppListComponent from './AppListComponent';
+import { Stack, Skeleton } from '@chakra-ui/react';
+import { useNavigate } from 'react-router-dom';
 import InstanceListComponent from './InstanceListComponent';
 import { AppManagerProvider, useAppManager } from './AppManagerContext';
 
 const LoadingSkeleton = () => (
-  <Stack>
+  <Stack p={4}>
     <Skeleton height="20px" />
     <Skeleton height="20px" />
     <Skeleton height="20px" />
@@ -13,6 +13,7 @@ const LoadingSkeleton = () => (
 );
 
 const AppManagerContent = () => {
+  const navigate = useNavigate();
   const {
     data,
     isLoading,
@@ -22,31 +23,25 @@ const AppManagerContent = () => {
     selectedInstanceId,
   } = useAppManager();
 
-  const handleOpenSettings = () => {
-    window.electron.ipcRenderer.sendMessage('open-settings-window', {
-      appId: selectedAppId || undefined,
-      instanceId: selectedInstanceId || undefined,
-    });
-  };
-
   useEffect(() => {
     if (isSettingsOpen) {
       setIsSettingsOpen(false);
-      handleOpenSettings();
+      const qs = new URLSearchParams();
+      if (selectedAppId) qs.set('appId', selectedAppId);
+      if (selectedInstanceId) qs.set('instanceId', String(selectedInstanceId));
+      navigate({
+        pathname: selectedInstanceId ? '/settings/shop' : '/settings/account',
+        search: qs.toString() ? `?${qs.toString()}` : '',
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAppId, selectedInstanceId, isSettingsOpen, setIsSettingsOpen]);
 
-  if (isLoading || !data || !data.data) {
+  if (isLoading && !data) {
     return <LoadingSkeleton />;
   }
 
-  return (
-    <Flex h="42vh">
-      <AppListComponent />
-      <InstanceListComponent />
-    </Flex>
-  );
+  return <InstanceListComponent />;
 };
 
 const AppManagerComponent = () => {

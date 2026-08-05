@@ -41,30 +41,10 @@ class BackendServiceManager {
   async start() {
     await this.ensurePort();
 
-    // 策略二进制（__main__.exe）必须启动，否则应用列表（拼多多／千牛）永远为空
-    // 旧逻辑在 development 直接 return，导致桌面端卡在“启动服务中”
-    if (!fs.existsSync(this.executablePath)) {
-      console.error(
-        `Backend executable not found: ${this.executablePath}. ` +
-          `请将官方安装包中的 backend 拷到 assets/backend/`,
-      );
-      return;
-    }
-
-    if (this.process) {
-      return;
-    }
-
-    this.launchProcess(this.port);
-
-    this.process?.on('close', (code) => {
-      console.log(`child process exited with code ${code}`);
-      this.process = null;
-      if (this.autoRestart) {
-        console.log('Attempting to restart...');
-        this.start().catch((err) => console.error('Failed to restart:', err));
-      }
-    });
+    // 本版仅拼多多 Playwright，不再拉起 StrategyBackend（__main__.exe）
+    console.log(
+      'StrategyBackend (__main__.exe) launch skipped; port reserved for local API only.',
+    );
   }
 
   private rotateLogs() {

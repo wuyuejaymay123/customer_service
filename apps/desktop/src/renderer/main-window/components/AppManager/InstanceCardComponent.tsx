@@ -1,19 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import {
-  Flex,
-  Image,
-  Badge,
-  HStack,
-  IconButton,
-  Text,
-  VStack,
-  Tooltip,
-  Switch,
-  useToast,
-} from '@chakra-ui/react';
+import { Box, HStack, Switch, Text, Tooltip, useToast } from '@chakra-ui/react';
 import { SettingsIcon, DeleteIcon } from '@chakra-ui/icons';
-import defaultPlatformIcon from '../../../../../assets/base/default-platform-icon.png';
-import { setShopAutoReply } from '../../../common/services/platform/controller';
+import {
+  reopenTaskBrowser,
+  setShopAutoReply,
+} from '../../../common/services/platform/controller';
+import { platformLabel } from './AppManagerContext';
 
 type InstanceCardComponentProps = {
   instance: {
@@ -27,16 +19,17 @@ type InstanceCardComponentProps = {
     auto_reply_enabled?: boolean;
     auto_reply_halt_reason?: string | null;
   };
-  /** AutoReplyMaster 是否开启（!hasPaused） */
   masterOn: boolean;
   selectedInstanceId: string | null;
   setSelectedInstanceId: React.Dispatch<React.SetStateAction<string | null>>;
   handleDelete: (taskId: string) => void;
   openSettings: () => void;
   onShopAutoReplyChanged?: () => void;
+  /** 运营台列表：只保留自动回开关，不展示设置／删除 */
+  hideManageActions?: boolean;
 };
 
-function displayTitle(instance: InstanceCardComponentProps['instance']): string {
+function shopNameOnly(instance: InstanceCardComponentProps['instance']): string {
   if (instance.app_id === 'win_qianniu') {
     return instance.shop_name?.trim()
       ? instance.shop_name
@@ -45,9 +38,9 @@ function displayTitle(instance: InstanceCardComponentProps['instance']): string 
   if (instance.app_id === 'pinduoduo') {
     return instance.shop_name?.trim()
       ? instance.shop_name
-      : `拼多多 #${instance.task_id}`;
+      : `#${instance.task_id}`;
   }
-  return `#${instance.task_id}`;
+  return instance.shop_name?.trim() || `#${instance.task_id}`;
 }
 
 function haltReasonLabel(reason: string | null | undefined): string {
@@ -64,46 +57,52 @@ function shopCardStatus(opts: {
   shopEnabled: boolean;
   haltReason?: string | null;
 }): {
-  connection: { label: string; color: string };
-  autoReply: { label: string; color: string };
+  connection: { label: string; tone: string };
+  autoReply: { label: string; tone: string };
 } {
-  let connection: { label: string; color: string };
+  let connection: { label: string; tone: string };
   if (opts.loginStatus === 'logged_in') {
-    connection = { label: '已连接', color: 'green' };
+    connection = { label: '已连接', tone: 'ok' };
   } else if (opts.loginStatus === 'pending') {
-    connection = { label: '待扫码', color: 'orange' };
+    connection = { label: '待扫码', tone: 'warn' };
   } else if (opts.loginStatus === 'closed') {
-    connection = { label: '已关闭', color: 'red' };
+    connection = { label: '已关闭', tone: 'bad' };
   } else {
-    connection = { label: '未知', color: 'gray' };
+    connection = { label: '未知', tone: 'muted' };
   }
 
-  let autoReply: { label: string; color: string };
+  let autoReply: { label: string; tone: string };
   if (
     opts.loginStatus === 'pending' ||
     opts.loginStatus === 'unknown' ||
     !opts.loginStatus
   ) {
-    autoReply = { label: '未就绪', color: 'gray' };
+    autoReply = { label: '未就绪', tone: 'muted' };
   } else if (!opts.masterOn) {
-    autoReply = { label: '总开关已关', color: 'orange' };
+    autoReply = { label: '总开关已关', tone: 'warn' };
   } else if (!opts.shopEnabled) {
     if (opts.haltReason) {
       const reason = haltReasonLabel(opts.haltReason);
       autoReply = {
         label: reason ? `已停用·${reason}` : '已停用',
-        color: 'red',
+        tone: 'bad',
       };
     } else {
-      autoReply = { label: '人工接待', color: 'orange' };
+      autoReply = { label: '人工接待', tone: 'warn' };
     }
   } else if (opts.loginStatus === 'logged_in') {
-    autoReply = { label: '自动回复中', color: 'green' };
+    autoReply = { label: '自动回复中', tone: 'ok' };
   } else {
-    autoReply = { label: '未就绪', color: 'gray' };
+    autoReply = { label: '未就绪', tone: 'muted' };
   }
 
   return { connection, autoReply };
+}
+
+function platformDotClass(appId: string): string {
+  if (appId === 'pinduoduo') return 'pdd';
+  if (appId === 'win_qianniu') return 'qn';
+  return 'other';
 }
 
 const InstanceCardComponent = ({
@@ -114,8 +113,8 @@ const InstanceCardComponent = ({
   handleDelete,
   openSettings,
   onShopAutoReplyChanged,
+  hideManageActions = false,
 }: InstanceCardComponentProps) => {
-  const title = displayTitle(instance);
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const shopEnabled = instance.auto_reply_enabled !== false;
@@ -135,9 +134,39 @@ const InstanceCardComponent = ({
     ],
   );
   const canToggle =
-    instance.app_id === 'pinduoduo' &&
-    instance.login_status === 'logged_in';
+    instance.app_id === 'pinduoduo' && instance.login_status === 'logged_in';
   const halted = Boolean(instance.auto_reply_halt_reason) && !shopEnabled;
+  const needsReopenBrowser =
+    instance.app_id === 'pinduoduo' &&
+    (instance.login_status === 'closed' ||
+      instance.auto_reply_halt_reason === 'browser_closed');
+  const title = `${platformLabel(instance.app_id)}-${shopNameOnly(instance)}`;
+
+  const onReopenBrowser = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await reopenTaskBrowser(instance.task_id);
+      onShopAutoReplyChanged?.();
+      toast({
+        title: '已重新打开浏览器',
+        description: '若会话失效请重新扫码；登录成功后可再开「本店自动回」。',
+        status: 'success',
+        duration: 5000,
+        isClosable: true,
+      });
+    } catch (e) {
+      toast({
+        title: '无法打开浏览器',
+        description: e instanceof Error ? e.message : String(e),
+        status: 'error',
+        duration: 6000,
+        isClosable: true,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const onToggleShop = async (checked: boolean) => {
     if (busy) return;
@@ -167,94 +196,106 @@ const InstanceCardComponent = ({
     }
   };
 
+  const selected = selectedInstanceId === instance.task_id;
+
   return (
-    <Flex
-      w="100%"
-      minH="56px"
-      bg={halted ? 'red.50' : 'gray.200'}
-      borderRadius="md"
-      borderWidth={halted ? '1px' : '0'}
-      borderColor={halted ? 'red.300' : 'transparent'}
-      align="center"
-      p={3}
-      justify="space-between"
-      outline={
-        selectedInstanceId === instance.task_id
-          ? '3px solid var(--chakra-colors-teal-300)'
-          : 'none'
-      }
+    <Box
+      className={`cs-lane${selected ? ' selected' : ''}${
+        halted ? ' halted' : ''
+      }`}
       onClick={() => setSelectedInstanceId(instance.task_id)}
     >
-      <HStack spacing={3} flex="1" minW={0}>
-        <Image
-          src={instance.avatar}
-          fallbackSrc={defaultPlatformIcon}
-          boxSize="25px"
-        />
-        <VStack align="start" spacing={1} minW={0} flex="1">
-          <Tooltip label={title}>
-            <Text fontSize="sm" fontWeight="medium" noOfLines={1}>
-              {title}
-            </Text>
-          </Tooltip>
-          <HStack spacing={1} flexWrap="wrap">
-            <Badge colorScheme={status.connection.color} fontSize="0.65rem">
-              {status.connection.label}
-            </Badge>
-            <Badge colorScheme={status.autoReply.color} fontSize="0.65rem">
-              {status.autoReply.label}
-            </Badge>
-            {instance.gateway_shop_id ? (
-              <Badge colorScheme="teal" fontSize="0.65rem">
-                知识已就绪
-              </Badge>
-            ) : instance.shop_name ? (
-              <Badge colorScheme="orange" fontSize="0.65rem">
-                待同步知识库
-              </Badge>
-            ) : null}
-          </HStack>
-        </VStack>
-      </HStack>
-      <HStack spacing={2} onClick={(e) => e.stopPropagation()}>
-        {instance.app_id === 'pinduoduo' && (
-          <Tooltip
-            label={
-              canToggle
-                ? shopEnabled
-                  ? '关闭后本店改由人工接待（不关浏览器）'
-                  : '开启本店自动回复（需总开关开启）'
-                : '请先扫码登录并保持浏览器连接'
-            }
+      <div className="cs-lane-body">
+        <div className="cs-lane-row1">
+          <span className={`cs-lane-dot ${platformDotClass(instance.app_id)}`} />
+          <div className="cs-lane-name-wrap" title={title}>
+            <span className="cs-lane-name">{title}</span>
+          </div>
+          <div
+            className="cs-lane-actions"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            role="presentation"
           >
-            <HStack spacing={1}>
-              <Text fontSize="xs" color="gray.600" whiteSpace="nowrap">
-                本店自动回
-              </Text>
-              <Switch
-                size="sm"
-                colorScheme="teal"
-                isChecked={shopEnabled}
-                isDisabled={!canToggle || busy}
-                onChange={(e) => onToggleShop(e.target.checked)}
-              />
-            </HStack>
-          </Tooltip>
-        )}
-        <IconButton
-          fontSize="15px"
-          aria-label="本店设置"
-          icon={<SettingsIcon />}
-          onClick={openSettings}
-        />
-        <IconButton
-          color="red.500"
-          aria-label="Delete instance"
-          icon={<DeleteIcon />}
-          onClick={() => handleDelete(instance.task_id)}
-        />
-      </HStack>
-    </Flex>
+            {instance.app_id === 'pinduoduo' && needsReopenBrowser && (
+              <button
+                type="button"
+                className="cs-reopen-browser"
+                disabled={busy}
+                onClick={onReopenBrowser}
+              >
+                {busy ? '打开中…' : '重新打开浏览器'}
+              </button>
+            )}
+            {instance.app_id === 'pinduoduo' && (
+              <Tooltip
+                label={
+                  canToggle
+                    ? shopEnabled
+                      ? '关闭后本店改由人工接待（不关浏览器）'
+                      : '开启本店自动回复（需总开关开启）'
+                    : needsReopenBrowser
+                      ? '请先点「重新打开浏览器」并完成扫码'
+                      : '请先扫码登录并保持浏览器连接'
+                }
+              >
+                <HStack spacing={1}>
+                  <Text fontSize="11px" color="gray.500" whiteSpace="nowrap">
+                    本店自动回
+                  </Text>
+                  <Switch
+                    size="sm"
+                    colorScheme="green"
+                    isChecked={shopEnabled}
+                    isDisabled={!canToggle || busy}
+                    onChange={(e) => onToggleShop(e.target.checked)}
+                  />
+                </HStack>
+              </Tooltip>
+            )}
+            {!hideManageActions && (
+              <>
+                <Tooltip label="本店设置">
+                  <button
+                    type="button"
+                    className="cs-lane-icon"
+                    aria-label="本店设置"
+                    onClick={openSettings}
+                  >
+                    <SettingsIcon />
+                  </button>
+                </Tooltip>
+                <Tooltip label="删除">
+                  <button
+                    type="button"
+                    className="cs-lane-icon danger"
+                    aria-label="Delete instance"
+                    onClick={() => handleDelete(instance.task_id)}
+                  >
+                    <DeleteIcon />
+                  </button>
+                </Tooltip>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="cs-lane-row2">
+          <div className="cs-lane-pills">
+            <span className={`cs-pill ${status.connection.tone}`}>
+              {status.connection.label}
+            </span>
+            <span className={`cs-pill ${status.autoReply.tone}`}>
+              {status.autoReply.label}
+            </span>
+            {instance.gateway_shop_id ? (
+              <span className="cs-pill teal">知识已就绪</span>
+            ) : instance.shop_name ? (
+              <span className="cs-pill warn">待同步知识库</span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </Box>
   );
 };
 

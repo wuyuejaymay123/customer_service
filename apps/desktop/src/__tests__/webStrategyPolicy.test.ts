@@ -13,6 +13,7 @@ import {
   shouldRunShopAutoReply,
   canEnableShopAutoReply,
   shopCardStatus,
+  shouldOfferReopenBrowser,
 } from '../main/backend/services/webStrategyPolicy';
 
 import {
@@ -175,6 +176,23 @@ describe('webStrategyPolicy', () => {
     assert.equal(canEnableShopAutoReply('logged_in'), true);
     assert.equal(canEnableShopAutoReply('pending'), false);
     assert.equal(canEnableShopAutoReply('closed'), false);
+  });
+
+  it('offers reopen browser after user closed the window', () => {
+    assert.equal(
+      shouldOfferReopenBrowser({
+        loginStatus: 'closed',
+        haltReason: 'browser_closed',
+      }),
+      true,
+    );
+    assert.equal(
+      shouldOfferReopenBrowser({
+        loginStatus: 'logged_in',
+        haltReason: null,
+      }),
+      false,
+    );
   });
 
   it('shop card shows connection and auto-reply lines separately', () => {

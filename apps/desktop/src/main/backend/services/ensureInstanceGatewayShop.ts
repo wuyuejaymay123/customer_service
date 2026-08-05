@@ -132,6 +132,14 @@ export async function ensureInstanceGatewayShop(
 
   inst.gateway_shop_id = gatewayShopId;
   await inst.save();
+  try {
+    const { schedulePushDesktopShopRoster } = await import(
+      './desktopConfigSync'
+    );
+    schedulePushDesktopShopRoster();
+  } catch {
+    /* ignore */
+  }
 
   return { gatewayShopId, shopName, created };
 }

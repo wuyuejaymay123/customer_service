@@ -47,6 +47,13 @@ export async function deleteTestTenant(tenantId: string) {
   await query('DELETE FROM shops WHERE tenant_id = $1', [tenantId]);
   await query('DELETE FROM tenant_policies WHERE tenant_id = $1', [tenantId]);
   await query('DELETE FROM tenant_knowledge WHERE tenant_id = $1', [tenantId]);
+  await query('DELETE FROM tenant_desktop_settings WHERE tenant_id = $1', [
+    tenantId,
+  ]);
+  await query('DELETE FROM tenant_keywords_bundle WHERE tenant_id = $1', [
+    tenantId,
+  ]);
+  await query('DELETE FROM tenant_shop_roster WHERE tenant_id = $1', [tenantId]);
   await query('DELETE FROM operators WHERE tenant_id = $1', [tenantId]);
   await query('DELETE FROM low_balance_thresholds WHERE tenant_id = $1', [
     tenantId,

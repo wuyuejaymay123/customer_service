@@ -1,24 +1,33 @@
-import React, { useEffect } from 'react';
-import {
-  Heading,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  HStack,
-  TableContainer,
-  Button,
-  Box,
-  VStack,
-} from '@chakra-ui/react';
+import React, { useEffect, useRef } from 'react';
 import { useWebSocketContext } from '../../hooks/useBroadcastContext';
 import useGlobalStore from '../../../settings-window/stores/useGlobalStore';
+import '../../../common/shell/appShell.css';
+
+function classifyLog(content: string): { tag: string; tone: string } {
+  const t = content || '';
+  if (/error|失败|错误|exception/i.test(t)) {
+    return { tag: 'ERR', tone: 'err' };
+  }
+  if (/warn|警告|偏低|停用/i.test(t)) {
+    return { tag: 'WARN', tone: 'warn' };
+  }
+  if (/成功|已创建|已开启|已连接|ok\b/i.test(t)) {
+    return { tag: 'OK', tone: 'ok' };
+  }
+  if (/\[info\]|info/i.test(t)) {
+    return { tag: 'INFO', tone: 'info' };
+  }
+  return { tag: 'INFO', tone: 'info' };
+}
+
+function stripLeadingTag(content: string): string {
+  return content.replace(/^\s*\[(INFO|OK|ERR|WARN|ERROR)\]\s*/i, '');
+}
 
 const LogBox = () => {
   const { logs, clearLogs, addLog } = useGlobalStore();
   const { registerEventHandler } = useWebSocketContext();
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const unregister = registerEventHandler((message) => {
@@ -36,54 +45,55 @@ const LogBox = () => {
       }
     });
 
-    // 组件卸载时注销事件处理器
     return () => unregister();
   }, [registerEventHandler]); // eslint-disable-line
 
-  const clearLog = () => {
-    clearLogs();
-  };
-
-  const openSelectedFolder = () => {
-    window.electron.ipcRenderer.sendMessage('open-logger-folder');
-  };
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [logs]);
 
   return (
-    <Box minHeight="150px">
-      <VStack>
-        {/* 靠左对齐 */}
-        <HStack width="full" justifyContent="flex-start">
-          <Heading as="h5" size="md" ml="2" mr="5">
-            运行日志
-          </Heading>
-          <Button size="sm" onClick={clearLog}>
-            清空全部日志
-          </Button>
-          <Button size="sm" onClick={openSelectedFolder}>
+    <div className="cs-console">
+      <div className="cs-console-head">
+        <span className="cs-console-bar" />
+        <span className="cs-console-title">运行窗口 · 统一监控</span>
+        <div className="cs-console-actions">
+          <button type="button" onClick={() => clearLogs()}>
+            清空
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              window.electron.ipcRenderer.sendMessage('open-logger-folder')
+            }
+          >
             打开日志文件
-          </Button>
-        </HStack>
-
-        <TableContainer overflowY="scroll" width="full" maxH={'40vh'}>
-          <Table size="sm">
-            <Thead>
-              <Tr>
-                <Th>时间</Th>
-                <Th>内容</Th>
-              </Tr>
-            </Thead>
-            <Tbody bg="gray.100">
-              {logs.map((log, index) => (
-                <Tr key={index}>
-                  <Td>{log.time}</Td>
-                  <Td>{log.content}</Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </TableContainer>
-      </VStack>
-    </Box>
+          </button>
+        </div>
+      </div>
+      <div className="cs-console-body" ref={bodyRef}>
+        {logs.length === 0 ? (
+          <div className="cs-console-line">
+            <span className="cs-console-tag live">live</span>
+            <span className="cs-console-msg muted">等待事件…</span>
+          </div>
+        ) : (
+          logs.map((log, index) => {
+            const { tag, tone } = classifyLog(log.content || '');
+            return (
+              <div className="cs-console-line" key={`${log.time}-${index}`}>
+                <span className={`cs-console-tag ${tone}`}>{tag}</span>
+                <span className="cs-console-time">[{log.time}]</span>
+                <span className="cs-console-msg">
+                  {stripLeadingTag(log.content || '')}
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 };
 

@@ -15,6 +15,9 @@ export class Instance extends Model {
   /** 网关 Shop.id（UUID） */
   declare gateway_shop_id: string | null;
 
+  /** ShopRoster 穩定條目 ID（雲同步） */
+  declare roster_id: string | null;
+
   /** ShopAutoReply：该店是否允许自动回复（仍受 AutoReplyMaster 约束） */
   declare auto_reply_enabled: boolean;
 
@@ -50,6 +53,10 @@ export function initInstance(sequelize: Sequelize) {
         defaultValue: 'unknown',
       },
       gateway_shop_id: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+      },
+      roster_id: {
         type: DataTypes.STRING(64),
         allowNull: true,
       },
@@ -95,6 +102,11 @@ export async function migrateInstanceColumns(sequelize: Sequelize) {
   if (!names.has('gateway_shop_id')) {
     await sequelize.query(
       `ALTER TABLE instance ADD COLUMN gateway_shop_id VARCHAR(64)`,
+    );
+  }
+  if (!names.has('roster_id')) {
+    await sequelize.query(
+      `ALTER TABLE instance ADD COLUMN roster_id VARCHAR(64)`,
     );
   }
   if (!names.has('auto_reply_enabled')) {

@@ -140,6 +140,35 @@ const GeneralSettings = ({
     }
   };
 
+  const handleSave = async () => {
+    if (!config) return;
+    try {
+      await updateConfig({
+        appId,
+        instanceId,
+        type: 'generic',
+        cfg: config,
+      });
+      toast({
+        title: '已保存',
+        status: 'success',
+        position: 'top',
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (error) {
+      const errormsg =
+        error instanceof Error ? error.message : JSON.stringify(error);
+      toast({
+        title: '保存失败',
+        description: errormsg,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+
   if (isLoading || !data || !config) {
     return (
       <Stack>
@@ -152,6 +181,9 @@ const GeneralSettings = ({
 
   return (
     <VStack spacing="4" align="start" style={style}>
+      <Button colorScheme="teal" alignSelf="flex-end" onClick={handleSave}>
+        保存
+      </Button>
       <Checkbox
         mr={4}
         isChecked={config.extractProduct}

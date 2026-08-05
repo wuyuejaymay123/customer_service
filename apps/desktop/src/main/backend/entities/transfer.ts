@@ -11,6 +11,19 @@ export class TransferKeyword extends Model {
   declare fuzzy: boolean;
 
   declare has_regular: boolean;
+
+  declare cloud_id: string | null;
+}
+
+export async function checkAndAddTransferFields(sequelize: Sequelize) {
+  const tableDescription = await TransferKeyword.describe();
+  // @ts-ignore
+  if (!tableDescription.cloud_id) {
+    await sequelize.getQueryInterface().addColumn('transfer', 'cloud_id', {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+    });
+  }
 }
 
 export function initTransfer(sequelize: Sequelize) {
@@ -39,6 +52,10 @@ export function initTransfer(sequelize: Sequelize) {
         allowNull: true,
         defaultValue: true,
       },
+      cloud_id: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+      },
     },
     {
       sequelize,
@@ -47,4 +64,5 @@ export function initTransfer(sequelize: Sequelize) {
       timestamps: false,
     },
   );
+  checkAndAddTransferFields(sequelize);
 }
