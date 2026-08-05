@@ -494,10 +494,22 @@
       const s = j.summary || {};
       const rate =
         s.marginRate == null ? '-' : (Number(s.marginRate) * 100).toFixed(1) + '%';
+      let promptSum = 0;
+      let completionSum = 0;
+      for (const u of j.data || []) {
+        promptSum += Number(u.prompt_tokens || 0);
+        completionSum += Number(u.completion_tokens || 0);
+      }
       usageSummary.textContent =
         '近 ' +
         (s.rows ?? 0) +
-        ' 条：扣点 ' +
+        ' 条（估算单 ' +
+        (s.estimatedRows ?? 0) +
+        '）：prompt ' +
+        promptSum +
+        ' ／ completion ' +
+        completionSum +
+        ' tokens；扣点 ' +
         (s.creditCharged ?? '-') +
         ' ／ 营收约 ¥' +
         (s.revenueCny ?? '-') +
@@ -507,16 +519,19 @@
         (s.marginCny ?? '-') +
         '（' +
         rate +
-        '）';
+        '）。可与 DeepSeek 控制台账单人工对账。';
       usageList.innerHTML =
-        '<table><tr><th>时间</th><th>模型</th><th>扣点数</th><th>上游成本¥</th><th>是否成功</th></tr>' +
+        '<table><tr><th>时间</th><th>模型</th><th>prompt</th><th>completion</th><th>扣点数</th><th>上游成本¥</th><th>是否成功</th><th>用量来源</th></tr>' +
         j.data
           .map(
             (u) => `<tr>
           <td>${escapeHtml(u.created_at || '')}</td><td>${escapeHtml(u.model || '')}</td>
+          <td>${escapeHtml(String(u.prompt_tokens ?? 0))}</td>
+          <td>${escapeHtml(String(u.completion_tokens ?? 0))}</td>
           <td>${escapeHtml(String(u.credit_charged ?? ''))}</td>
           <td>${escapeHtml(u.cost_upstream != null ? String(u.cost_upstream) : '-')}</td>
           <td>${u.success ? '成功' : '失败'}</td>
+          <td>${u.usage_estimated ? '估算(吃满预扣)' : '上游usage'}</td>
         </tr>`,
           )
           .join('') +

@@ -73,6 +73,7 @@ CREATE TABLE usage_records (
   credit_charged NUMERIC(18,4) DEFAULT 0,
   success BOOLEAN NOT NULL DEFAULT false,
   error_message TEXT,
+  usage_estimated BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

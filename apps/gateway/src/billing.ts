@@ -95,6 +95,8 @@ export async function settleReserve(opts: {
     costUpstream?: number | null;
     success: boolean;
     errorMessage?: string;
+    /** 缺上游可信 usage 時的偏貴兜底單 */
+    usageEstimated?: boolean;
   };
 }) {
   const client = await pool.connect();
@@ -163,8 +165,8 @@ export async function settleReserve(opts: {
       `INSERT INTO usage_records (
          tenant_id, operator_id, reserve_id, model,
          prompt_tokens, completion_tokens, cost_upstream,
-         credit_charged, success, error_message
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+         credit_charged, success, error_message, usage_estimated
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         opts.tenantId,
         opts.operatorId,
@@ -176,6 +178,7 @@ export async function settleReserve(opts: {
         charge,
         opts.usage.success,
         opts.usage.errorMessage ?? null,
+        Boolean(opts.usage.usageEstimated),
       ],
     );
     await client.query('COMMIT');

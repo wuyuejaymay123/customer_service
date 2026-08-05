@@ -66,6 +66,10 @@ import {
   putDesktopConfig,
   type DesktopConfigKind,
 } from './desktopConfig.js';
+import {
+  assertUpstreamUsagePolicy,
+  buildUpstreamChatBody,
+} from './upstreamChatBody.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -681,19 +685,23 @@ app.get(
       cost_upstream: string | null;
       credit_charged: string;
       success: boolean;
+      usage_estimated: boolean;
       created_at: string;
       tenant_id: string;
     }>(
       `SELECT id, tenant_id, model, prompt_tokens, completion_tokens,
-              cost_upstream, credit_charged, success, created_at
+              cost_upstream, credit_charged, success,
+              COALESCE(usage_estimated, false) AS usage_estimated, created_at
        FROM usage_records ORDER BY created_at DESC LIMIT 100`,
     );
     const cnyToCredit = await getPrice('cny_to_credit');
     let creditSum = 0;
     let costSum = 0;
+    let estimatedRows = 0;
     for (const row of r.rows) {
       creditSum += Number(row.credit_charged || 0);
       costSum += Number(row.cost_upstream || 0);
+      if (row.usage_estimated) estimatedRows += 1;
     }
     const revenueCny = creditToCny(creditSum, cnyToCredit);
     const m = marginCny(revenueCny, costSum);
@@ -702,6 +710,7 @@ app.get(
       data: r.rows,
       summary: {
         rows: r.rows.length,
+        estimatedRows,
         creditCharged: Number(creditSum.toFixed(4)),
         costUpstreamCny: Number(costSum.toFixed(6)),
         revenueCny,
@@ -1598,7 +1607,18 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
   req.on('close', onClientClose);
 
   const baseUrl = sku.rows[0].base_url.replace(/\/$/, '');
+  /** 上游已成功解析後禁止再 release（ADR-0012） */
+  let billableSettled = false;
   try {
+    const upstreamBody = buildUpstreamChatBody({
+      model: sku.rows[0].model,
+      messages: upstreamMessages,
+      tenantId: user.tenantId!,
+      stream: false,
+    });
+
+    assertUpstreamUsagePolicy(upstreamBody);
+
     const upstream = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -1606,21 +1626,8 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
         Authorization: `Bearer ${sku.rows[0].api_key}`,
       },
       signal: upstreamAbort.signal,
-      body: JSON.stringify({
-        model: sku.rows[0].model,
-        messages: upstreamMessages,
-        stream: false,
-      }),
+      body: JSON.stringify(upstreamBody),
     });
-    if (clientGone || req.aborted) {
-      await releaseReserve({
-        reserveId,
-        tenantId: user.tenantId,
-        operatorId: user.id,
-        errorMessage: 'client_disconnected_before_settle',
-      });
-      return;
-    }
     if (!upstream.ok) {
       const text = await upstream.text();
       await releaseReserve({
@@ -1629,7 +1636,7 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
         operatorId: user.id,
         errorMessage: text.slice(0, 500),
       });
-      if (!res.headersSent) {
+      if (!res.headersSent && !clientGone && !req.aborted) {
         res.status(502).json({ success: false, message: '智能回复服务暂时失败，请稍后重试' });
       }
       return;
@@ -1643,26 +1650,28 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
         prompt_cache_miss_tokens?: number;
       };
     };
-    if (clientGone || req.aborted) {
-      await releaseReserve({
-        reserveId,
-        tenantId: user.tenantId,
-        operatorId: user.id,
-        errorMessage: 'client_disconnected_before_settle',
-      });
-      return;
-    }
+    // UpstreamBillableSuccess：響應已完整解析 → 必須 settle（含斷線／空內容）
     const content = data.choices?.[0]?.message?.content ?? '';
-    const promptTokens = data.usage?.prompt_tokens ?? Math.ceil(estPrompt);
-    const completionTokens =
-      data.usage?.completion_tokens ?? Math.ceil(content.length / 3);
-    const actual = estimateCredits(
-      promptTokens,
-      completionTokens,
-      promptRate,
-      completionRate,
-      discount,
-    );
+    const hasTrustedUsage =
+      typeof data.usage?.prompt_tokens === 'number' &&
+      typeof data.usage?.completion_tokens === 'number';
+    const usageEstimated = !hasTrustedUsage;
+    const promptTokens = hasTrustedUsage
+      ? Number(data.usage!.prompt_tokens)
+      : Math.ceil(estPrompt);
+    const completionTokens = hasTrustedUsage
+      ? Number(data.usage!.completion_tokens)
+      : Math.ceil(Math.max(content.length, 1) / 3);
+    // 缺可信 usage：吃滿預扣，避免低估免單
+    const actual = usageEstimated
+      ? reserveAmount
+      : estimateCredits(
+          promptTokens,
+          completionTokens,
+          promptRate,
+          completionRate,
+          discount,
+        );
     const tier = resolveUpstreamTier(sku.rows[0].model);
     const costUpstream = computeUpstreamCostCny(
       {
@@ -1686,11 +1695,19 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
           completionTokens,
           costUpstream,
           success: true,
+          usageEstimated,
+          errorMessage: usageEstimated
+            ? 'usage_estimated_full_reserve'
+            : content
+              ? undefined
+              : 'empty_upstream_content',
         },
       });
+      billableSettled = true;
     } catch (settleErr) {
       const settleMsg =
         settleErr instanceof Error ? settleErr.message : String(settleErr);
+      // 結算失敗極罕見；仍嘗試 release 以免永久凍結（此時運營需對帳）
       await releaseReserve({
         reserveId,
         tenantId: user.tenantId,
@@ -1700,7 +1717,7 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
       throw settleErr;
     }
     if (clientGone || req.aborted || res.headersSent) {
-      // 极端竞态：已结算但客户端已走——无法退款，只避免再写响应
+      // 已结算；客户端已走——不退款、不写响应
       return;
     }
     res.json({
@@ -1715,16 +1732,18 @@ app.post('/v1/chat/completions', authRequired, async (req, res) => {
       clientGone ||
       req.aborted ||
       (e instanceof Error && e.name === 'AbortError');
-    await releaseReserve({
-      reserveId,
-      tenantId: user.tenantId,
-      operatorId: user.id,
-      errorMessage: aborted
-        ? 'client_disconnected_or_aborted'
-        : e instanceof Error
-          ? e.message
-          : String(e),
-    });
+    if (!billableSettled) {
+      await releaseReserve({
+        reserveId,
+        tenantId: user.tenantId,
+        operatorId: user.id,
+        errorMessage: aborted
+          ? 'client_disconnected_or_aborted_before_upstream_success'
+          : e instanceof Error
+            ? e.message
+            : String(e),
+      });
+    }
     if (!res.headersSent && !aborted) {
       res.status(500).json({ success: false, message: '网关异常，请稍后重试' });
     }

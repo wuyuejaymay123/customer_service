@@ -43,6 +43,13 @@ async function main() {
   await pool.query(desktopConfigSql);
   console.log('migrate: schema-desktop-config.sql applied');
 
+  const billingSafetySql = fs.readFileSync(
+    path.join(__dirname, 'schema-billing-safety.sql'),
+    'utf8',
+  );
+  await pool.query(billingSafetySql);
+  console.log('migrate: schema-billing-safety.sql applied');
+
   await ensureHardRulesSeeded();
   console.log('migrate: platform hard rules seeded if empty');
 

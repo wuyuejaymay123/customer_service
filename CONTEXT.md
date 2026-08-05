@@ -49,11 +49,19 @@ PlatformAdmin 對 Wallet 的糾錯或補償入帳；不表示現金退款。
 _Avoid_: 退款, 贈送單（若需可記為 Adjustment 子類型）
 
 **Reserve**：
-AI 請求前凍結的預估 Credit；成功則結算，失敗則釋放。
-_Avoid_: 預扣（口語可）, hold
+AI 請求前凍結的預估 Credit。上游請求**尚未成功**時失敗可釋放；一旦構成 **UpstreamBillableSuccess** 則必須結算為實扣，不得因桌面斷線／空回覆而釋放免單。
+_Avoid_: 預扣（口語可）, hold, 客戶端斷線就釋放已成功的上游呼叫
+
+**UpstreamBillableSuccess**：
+閘道判定「上游已成功完成、運營可能已被供應商計費」的狀態：非流式下為 HTTP 成功且響應體已完整解析。此後必須 settle，與買家是否看到回覆無關。
+_Avoid_: 以客戶端是否收到響應當扣費條件, 流式未帶 usage 仍當成功
+
+**UsageEstimated**：
+UsageRecord 上的標記：本次對外扣 Credit／token 非上游可信 usage，而是偏貴兜底（通常吃滿 Reserve）。供運營對帳篩查，不對商戶展示細節。
+_Avoid_: 缺 usage 就免單, 缺 usage 用樂觀低估充當真實用量
 
 **UsageRecord**：
-一次 AI 呼叫的對內計量（真實 token、分項上游成本、扣 Credit、成敗）；不含對話全文。上游成本與對外扣 Credit 可分離：前者跟模型價目與 cache，後者跟 PriceBook／TenantPricing。客戶端對帳僅見**成功且 Credit＞0** 的時間與扣點，不回傳模型名／token／成本。
+一次 AI 呼叫的對內計量（真實或估算 token、分項上游成本、扣 Credit、成敗、是否 UsageEstimated）；不含對話全文。上游成本與對外扣 Credit 可分離：前者跟模型價目與 cache，後者跟 PriceBook／TenantPricing。客戶端對帳僅見**成功且 Credit＞0** 的時間與扣點，不回傳模型名／token／成本。
 _Avoid_: 調用日誌（過寬）, 假定扣費金額等於上游帳單, 向商戶暴露上游模型名
 
 **PriceBook**：
@@ -71,8 +79,12 @@ _Avoid_: 合同價（過寬）
 _Avoid_: 代理, proxy（技術口語可）
 
 **ModelSKU**：
-PlatformAdmin 配置的可路由上游模型（OpenAI 兼容端點）。不承載全平台行為禁令文案。
-_Avoid_: 模型名（裸字符串）, 把 HardRules 寫進 ModelSKU
+PlatformAdmin 配置的可路由上游模型（OpenAI 兼容端點）。客服路徑只走運營配置的**單一便宜檔**（flash／等價 ID）；租戶不可自選更高價 SKU。不承載全平台行為禁令文案。
+_Avoid_: 模型名（裸字符串）, 把 HardRules 寫進 ModelSKU, 讓租戶自選 pro／高價模型
+
+**UpstreamChatPolicy**：
+閘道組裝上游 chat/completions 請求體的硬規則：強制非流式（見 ADR-0012）、`thinking` 關閉、`max_tokens` 硬頂（1024）、帶 `user=tenant:<tenantId>`；桌面不可覆寫。峰谷時段價差一期不做，單價仍用現行價目。
+_Avoid_: 沿用供應商默認開啟思考模式, 不設輸出上限, 把買家真名當 user, 一期就上峰谷自動切價
 
 **PlatformHardRules**：
 運營方配置的**全平台一份**強制系統規則（禁編造商品、禁對買家說轉人工／露餡詞、僅可依目錄售貨等）。與 ModelSKU 脫鉤；注入時優先於商戶自訂，且不可被削弱。
